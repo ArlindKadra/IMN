@@ -1,15 +1,20 @@
 import openml
 import sklearn
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR
 import torch
 
 import numpy as np
 
 from models.HyperNetwork import HyperNet
 
-def main():
+def main(seed: int = 1):
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
     # Get the data
     dataset = openml.datasets.get_dataset(1590)
@@ -71,7 +76,7 @@ def main():
     nr_classes = len(y_train.unique())
 
     # Train a hypernetwork
-    hypernet = HyperNet(nr_features, nr_classes)
+    hypernet = HyperNet(nr_features, nr_classes, nr_blocks=1, hidden_size=128)
 
     # Create dataloader for training
     train_dataset = torch.utils.data.TensorDataset(
@@ -80,25 +85,27 @@ def main():
     )
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
 
+    nr_epochs = 105
     # Train the hypernetwork
-    optimizer = torch.optim.Adam(hypernet.parameters(), lr=0.001)
+    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01)
+    scheduler = CosineAnnealingWarmRestarts(optimizer, 15, 2)
     criterion = torch.nn.CrossEntropyLoss()
 
-    for epoch in range(10):
+    for epoch in range(nr_epochs):
         for batch_idx, batch in enumerate(train_loader):
             x, y = batch
             optimizer.zero_grad()
             output, weights = hypernet(x, return_weights=True)
             l1_loss = torch.norm(weights, 1)
 
-            loss = criterion(output, y) + 0.001 * l1_loss
+            loss = criterion(output, y) + 0.00001 * l1_loss
             loss.backward()
             optimizer.step()
-            # print accuracy and loss per batch
             predictions = torch.argmax(output, dim=1)
             balanced_accuracy = balanced_accuracy_score(y, predictions)
             accuracy = accuracy_score(y, predictions)
             print("Epoch: %d, Batch: %d, Loss: %0.2f, Balanced accuracy: %0.2f, Accuracy: %0.2f" % (epoch, batch_idx, loss.item(), balanced_accuracy, accuracy))
+        scheduler.step()
 
     # calculate the accuracy of the hypernetwork
     predictions, weights = hypernet(torch.tensor(X_test.values).float(), return_weights=True)
@@ -112,7 +119,8 @@ def main():
     weights = weights.detach().numpy()
     selected_weights = []
     for test_example_idx in range(weights.shape[0]):
-        selected_weights.append(weights[test_example_idx, :, predictions[test_example_idx]])
+        # select the weights for the predicted class and also take the absolute values
+        selected_weights.append(np.abs(weights[test_example_idx, :, predictions[test_example_idx]]))
 
     weights = np.array(selected_weights)
     # sum the weights over all test examples
@@ -130,4 +138,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    seed = 11
+    main(seed=seed)
