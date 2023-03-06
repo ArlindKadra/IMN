@@ -16,16 +16,16 @@ class HyperNet(nn.Module):
         self.hidden_size = hidden_size
         self.blocks = nn.ModuleList()
         self.dropout_rate = dropout_rate
+        self.batch_norm = nn.BatchNorm1d(self.hidden_size)
 
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.output_layer = nn.Linear(hidden_size, nr_features * nr_classes)
-        self.act_func = torch.nn.LeakyReLU()
+        self.act_func = torch.nn.SELU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
-        self.sigmoid_func = torch.nn.Sigmoid()
 
     def forward(self, x, return_weights: bool = False):
 
@@ -33,13 +33,15 @@ class HyperNet(nn.Module):
         input = x
 
         x = self.input_layer(x)
-        residual = x
+        x = self.batch_norm(x)
+        x = self.act_func(x)
         for i in range(self.nr_blocks):
+            residual = x
             x = self.blocks[i](x)
             x = x + residual
-            residual = x
+            x = self.act_func(x)
 
-        x = self.act_func(x)
+        #x = self.act_func(x)
         w = self.output_layer(x)
         w = w.view(-1, self.nr_features, self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
@@ -52,16 +54,22 @@ class HyperNet(nn.Module):
     def make_residual_block(self, in_features, output_features):
 
         return nn.Sequential(
-            nn.BatchNorm1d(in_features),
-            nn.LeakyReLU(),
+
+            nn.Linear(in_features, output_features),
+            nn.BatchNorm1d(output_features),
+            torch.nn.SELU(),
             nn.Dropout(p=self.dropout_rate),
-            nn.Linear(in_features, int(output_features / 4)),
-            nn.BatchNorm1d(int(output_features / 4)),
-            nn.LeakyReLU(),
-            nn.Dropout(p=self.dropout_rate),
-            nn.Linear(int(output_features / 4), int(output_features / 4)),
-            nn.BatchNorm1d(int(output_features / 4)),
-            nn.LeakyReLU(),
-            nn.Dropout(p=self.dropout_rate),
-            nn.Linear(int(output_features / 4), output_features),
+            nn.Linear(output_features, output_features),
+            nn.BatchNorm1d(output_features),
         )
+        """
+        return nn.Sequential(
+            nn.BatchNorm1d(in_features),
+            torch.nn.SELU(),
+            nn.Linear(in_features, output_features),
+            nn.BatchNorm1d(output_features),
+            torch.nn.SELU(),
+            nn.Dropout(p=self.dropout_rate),
+            nn.Linear(output_features, output_features),
+        )
+        """

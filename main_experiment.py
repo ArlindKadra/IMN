@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import openml
 import sklearn
 from sklearn.ensemble import RandomForestClassifier
@@ -8,13 +10,18 @@ import torch
 import numpy as np
 
 from models.HyperNetwork import HyperNet
+from utils import augment_data
+
 
 def main(seed: int = 1):
 
+    dev = torch.device(
+            'cuda') if torch.cuda.is_available() else torch.device('cpu')
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.manual_seed(seed)
     np.random.seed(seed)
+    cut_mix_prob = 0.5
 
     # Get the data
     dataset = openml.datasets.get_dataset(1590)
@@ -22,7 +29,7 @@ def main(seed: int = 1):
         dataset_format='dataframe',
         target=dataset.default_target_attribute
     )
-
+    numerical_features = [i for i in range(X.shape[1]) if not categorical_indicator[i]]
     # substitute missing values
     for i in range(X.shape[1]):
         if categorical_indicator[i] == False:
@@ -51,7 +58,7 @@ def main(seed: int = 1):
     y = y.replace(category_to_int)
 
     # Split the data into train and test
-    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.2, random_state=1)
+    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.2, random_state=1, stratify=y)
 
     # Train a random forest classifier
     clf = RandomForestClassifier(n_estimators=100)
@@ -75,13 +82,25 @@ def main(seed: int = 1):
     nr_features = X_train.shape[1]
     nr_classes = len(y_train.unique())
 
-    # Train a hypernetwork
-    hypernet = HyperNet(nr_features, nr_classes, nr_blocks=1, hidden_size=128)
+    network_configuration = {
+        'nr_features': nr_features,
+        'nr_classes': nr_classes,
+        'nr_blocks': 2,
+        'hidden_size': 128,
+        'dropout_rate': 0.25,
+    }
 
+    # Train a hypernetwork
+    hypernet = HyperNet(**network_configuration)
+    hypernet = hypernet.to(dev)
+    X_train = torch.tensor(X_train.values).float()
+    y_train = torch.tensor(y_train.values).long()
+    X_train = X_train.to(dev)
+    y_train = y_train.to(dev)
     # Create dataloader for training
     train_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(X_train.values).float(),
-        torch.tensor(y_train.values).long(),
+        X_train,
+        y_train,
     )
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
 
@@ -91,36 +110,80 @@ def main(seed: int = 1):
     scheduler = CosineAnnealingWarmRestarts(optimizer, 15, 2)
     criterion = torch.nn.CrossEntropyLoss()
 
-    for epoch in range(nr_epochs):
+    ensemble_snapshot_intervals = [15, 30, 60]
+    ensemble_snapshots = []
+    hypernet.train()
+    for epoch in range(1, nr_epochs + 1):
+
+        loss_value = 0
+        accuracy_value = 0
         for batch_idx, batch in enumerate(train_loader):
             x, y = batch
+            x, y_1, y_2, lam = augment_data(x, y, numerical_features, cut_mix_prob=0.2)
             optimizer.zero_grad()
             output, weights = hypernet(x, return_weights=True)
             l1_loss = torch.norm(weights, 1)
-
-            loss = criterion(output, y) + 0.00001 * l1_loss
+            loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + 0.0001 * l1_loss
             loss.backward()
             optimizer.step()
             predictions = torch.argmax(output, dim=1)
-            balanced_accuracy = balanced_accuracy_score(y, predictions)
-            accuracy = accuracy_score(y, predictions)
-            print("Epoch: %d, Batch: %d, Loss: %0.2f, Balanced accuracy: %0.2f, Accuracy: %0.2f" % (epoch, batch_idx, loss.item(), balanced_accuracy, accuracy))
+
+            # calculate accuracy with pytorch
+            accuracy = torch.sum(predictions == y).item() / len(y)
+
+            loss_value += loss.item()
+            accuracy_value += accuracy
+
+        loss_value /= len(train_loader)
+        accuracy_value /= len(train_loader)
+        print(f'Epoch: {epoch}, Loss: {loss_value}, Accuracy: {accuracy_value}')
+
+        if epoch in ensemble_snapshot_intervals:
+            ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
+
         scheduler.step()
 
-    # calculate the accuracy of the hypernetwork
-    predictions, weights = hypernet(torch.tensor(X_test.values).float(), return_weights=True)
-    predictions = torch.argmax(predictions, dim=1)
-    predictions = predictions.detach().numpy()
+    snapshot_models = []
+    for snapshot_idx, snapshot in enumerate(ensemble_snapshots):
+
+        hypernet = HyperNet(**network_configuration)
+        hypernet = hypernet.to(dev)
+        hypernet.load_state_dict(snapshot)
+        hypernet.eval()
+        snapshot_models.append(hypernet)
+
+    X_test = torch.tensor(X_test.values).float()
+    X_test = X_test.to(dev)
+    predictions = []
+    weights = []
+    for snapshot_idx, snapshot in enumerate(snapshot_models):
+        with torch.no_grad():
+            output, model_weights = snapshot(X_test, return_weights=True)
+            predictions.append([output.detach().to('cpu').numpy()])
+            weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
+
+
+    predictions = np.array(predictions)
+    weights = np.array(weights)
+    predictions = np.squeeze(predictions)
+    weights = np.squeeze(weights)
+    predictions = np.mean(predictions, axis=0)
+    weights = np.mean(weights, axis=0)
+
+    # from series to list
+    y_test = y_test.tolist()
+    predictions = np.argmax(predictions, axis=1)
     balanced_accuracy = balanced_accuracy_score(y_test, predictions)
     accuracy = accuracy_score(y_test, predictions)
 
     print("Balanced accuracy: %0.2f" % balanced_accuracy)
     print("Accuracy: %0.2f" % accuracy)
-    weights = weights.detach().numpy()
+
     selected_weights = []
     for test_example_idx in range(weights.shape[0]):
         # select the weights for the predicted class and also take the absolute values
-        selected_weights.append(np.abs(weights[test_example_idx, :, predictions[test_example_idx]]))
+        if y_test[test_example_idx] == predictions[test_example_idx]:
+            selected_weights.append(np.abs(weights[test_example_idx, :, predictions[test_example_idx]]))
 
     weights = np.array(selected_weights)
     # sum the weights over all test examples
