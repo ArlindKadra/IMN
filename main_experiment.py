@@ -1,67 +1,67 @@
+import argparse
 from copy import deepcopy
 
-import openml
-import sklearn
+import wandb
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR
+
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
 import numpy as np
 
 from models.HyperNetwork import HyperNet
-from utils import augment_data
+from utils import augment_data, get_dataset
 
 
-def main(seed: int = 1):
+def main(args: argparse.Namespace) -> None:
 
     dev = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    cut_mix_prob = 0.5
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
-    # Get the data
-    dataset = openml.datasets.get_dataset(1590)
-    X, y, categorical_indicator, attribute_names = dataset.get_data(
-        dataset_format='dataframe',
-        target=dataset.default_target_attribute
+    dataset_id = args.dataset_id
+    test_split_size = args.test_split_size
+    seed = args.seed
+    nr_epochs = args.nr_epochs
+    batch_size = args.batch_size
+    learning_rate = args.learning_rate
+    augmentation_probability = args.augmentation_probability
+    weight_decay = args.weight_decay
+    weight_norm = args.weight_norm
+    scheduler_t_init = args.scheduler_t_init
+    scheduler_t_mult = args.scheduler_t_mult
+
+    info = get_dataset(
+        dataset_id,
+        test_split_size=test_split_size,
+        seed=seed,
     )
-    numerical_features = [i for i in range(X.shape[1]) if not categorical_indicator[i]]
-    # substitute missing values
-    for i in range(X.shape[1]):
-        if categorical_indicator[i] == False:
-            X.iloc[:, i] = X.iloc[:, i].fillna(X.iloc[:, i].mean())
-        else:
-            categories = X.iloc[:, i].unique()
-            # create a dictionary that maps each category to a number
-            category_to_int = {category: i for i, category in enumerate(categories)}
-            # replace the categories with numbers
-            X.iloc[:, i] = X.iloc[:, i].replace(category_to_int)
-            # add a new category -1 for missing values
-            X.iloc[:, i] = X.iloc[:, i].cat.add_categories([-1])
-            X.iloc[:, i] = X.iloc[:, i].fillna(-1)
 
-    # standardize the data for numerical columns
-    for i in range(X.shape[1]):
-        if categorical_indicator[i] == False:
-            X.iloc[:, i] = (X.iloc[:, i] - X.iloc[:, i].mean()) / X.iloc[:, i].std()
+    X_train = info['X_train']
+    X_test = info['X_test']
+    y_train = info['y_train']
+    y_test = info['y_test']
+    categorical_indicator = info['categorical_indicator']
+    attribute_names = info['attribute_names']
 
-    # encode classes with numbers pandas
-    y = y.astype('category')
-    categories = y.unique()
-    # create a dictionary that maps each category to a number
-    category_to_int = {category: i for i, category in enumerate(categories)}
-    # replace the categories with numbers
-    y = y.replace(category_to_int)
+    # the reference to info is not needed anymore
+    del info
 
-    # Split the data into train and test
-    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.2, random_state=1, stratify=y)
+    numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
+
+    total_weight = y_train.shape[0]
+    unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
+    weight_per_class = total_weight / unique_classes.shape[0]
+    weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
 
     # Train a random forest classifier
-    clf = RandomForestClassifier(n_estimators=100)
+    clf = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=seed)
     clf.fit(X_train, y_train)
     predictions = clf.predict(X_test)
     # calculate the balanced accuracy
@@ -80,21 +80,26 @@ def main(seed: int = 1):
     print("Top 10 features: %s" % top_10_features)
 
     nr_features = X_train.shape[1]
-    nr_classes = len(y_train.unique())
+    nr_classes = len(unique_classes)
 
     network_configuration = {
         'nr_features': nr_features,
         'nr_classes': nr_classes,
-        'nr_blocks': 2,
-        'hidden_size': 128,
-        'dropout_rate': 0.25,
+        'nr_blocks': args.nr_levels,
+        'hidden_size': args.hidden_size,
+        #'cardinality': args.cardinality,
     }
+
+    wandb.init(
+        project='INN',
+        config=args,
+    )
 
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
-    X_train = torch.tensor(X_train.values).float()
-    y_train = torch.tensor(y_train.values).long()
+    X_train = torch.tensor(X_train).float()
+    y_train = torch.tensor(y_train).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
     # Create dataloader for training
@@ -102,30 +107,46 @@ def main(seed: int = 1):
         X_train,
         y_train,
     )
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    nr_epochs = 105
+    T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** 3 - 1), 1)
     # Train the hypernetwork
-    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01)
-    scheduler = CosineAnnealingWarmRestarts(optimizer, 15, 2)
-    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+    criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().to(dev))
+    wandb.watch(hypernet, criterion, log='all', log_freq=10)
 
-    ensemble_snapshot_intervals = [15, 30, 60]
+    ensemble_snapshot_intervals = [T_0, 3 * T_0, 7 * T_0]
     ensemble_snapshots = []
-    hypernet.train()
+    iteration = 0
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
         accuracy_value = 0
         for batch_idx, batch in enumerate(train_loader):
+
+            iteration += 1
             x, y = batch
-            x, y_1, y_2, lam = augment_data(x, y, numerical_features, cut_mix_prob=0.2)
+            hypernet.eval()
+            info = augment_data(x, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
+            hypernet.train()
             optimizer.zero_grad()
-            output, weights = hypernet(x, return_weights=True)
+
+            if len(info) == 4:
+                x, y_1, y_2, lam = info
+                output, weights = hypernet(x, return_weights=True)
+                main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
+            else:
+                x, adversarial_x, y_1, y_2, lam = info
+                output, weights = hypernet(x, return_weights=True)
+                output_adv = hypernet(adversarial_x, return_weights=False)
+                main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
+
             l1_loss = torch.norm(weights, 1)
-            loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + 0.0001 * l1_loss
+            loss = main_loss + weight_norm * l1_loss
             loss.backward()
             optimizer.step()
+            scheduler.step()
             predictions = torch.argmax(output, dim=1)
 
             # calculate accuracy with pytorch
@@ -133,15 +154,15 @@ def main(seed: int = 1):
 
             loss_value += loss.item()
             accuracy_value += accuracy
+            if iteration in ensemble_snapshot_intervals:
+                ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
 
         loss_value /= len(train_loader)
         accuracy_value /= len(train_loader)
         print(f'Epoch: {epoch}, Loss: {loss_value}, Accuracy: {accuracy_value}')
+        wandb.log({"Train:Loss": loss_value, "Train:Accuracy": accuracy_value})
 
-        if epoch in ensemble_snapshot_intervals:
-            ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
 
-        scheduler.step()
 
     snapshot_models = []
     for snapshot_idx, snapshot in enumerate(ensemble_snapshots):
@@ -152,7 +173,7 @@ def main(seed: int = 1):
         hypernet.eval()
         snapshot_models.append(hypernet)
 
-    X_test = torch.tensor(X_test.values).float()
+    X_test = torch.tensor(X_test).float()
     X_test = X_test.to(dev)
     predictions = []
     weights = []
@@ -161,7 +182,6 @@ def main(seed: int = 1):
             output, model_weights = snapshot(X_test, return_weights=True)
             predictions.append([output.detach().to('cpu').numpy()])
             weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
-
 
     predictions = np.array(predictions)
     weights = np.array(weights)
@@ -176,8 +196,11 @@ def main(seed: int = 1):
     balanced_accuracy = balanced_accuracy_score(y_test, predictions)
     accuracy = accuracy_score(y_test, predictions)
 
-    print("Balanced accuracy: %0.2f" % balanced_accuracy)
-    print("Accuracy: %0.2f" % accuracy)
+    print("Balanced accuracy: %0.3f" % balanced_accuracy)
+    print("Accuracy: %0.3f" % accuracy)
+
+    wandb.run.summary["Test:accuracy"] = accuracy
+    wandb.run.summary["Test:balanced_accuracy"] = balanced_accuracy
 
     selected_weights = []
     for test_example_idx in range(weights.shape[0]):
@@ -186,6 +209,8 @@ def main(seed: int = 1):
             selected_weights.append(np.abs(weights[test_example_idx, :, predictions[test_example_idx]]))
 
     weights = np.array(selected_weights)
+    # remove last column from weights
+    weights = weights[:, :-1]
     # sum the weights over all test examples
     weights = np.sum(weights, axis=0)
 
@@ -198,8 +223,99 @@ def main(seed: int = 1):
     print("Top 10 features: %s" % top_10_features)
     # print the weights of the top 10 features
     print(weights[sorted_idx[:10]])
+    wandb.run.summary["Top_10_features"] = top_10_features
+    wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
 
 
 if __name__ == "__main__":
-    seed = 11
-    main(seed=seed)
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument(
+        "--nr_levels",
+        type=int,
+        default=2,
+        help="Number of levels in the hypernetwork",
+    )
+    parser.add_argument(
+        "--hidden_size",
+        type=int,
+        default=128,
+        help="Number of hidden units in the hypernetwork",
+    )
+    parser.add_argument(
+        "--cardinality",
+        type=int,
+        default=4,
+        help="Number of transformations per level in the hypernetwork",
+    )
+    parser.add_argument(
+        "--nr_epochs",
+        type=int,
+        default=100,
+        help="Number of epochs",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=128,
+        help="Batch size",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.001,
+        help="Learning rate",
+    )
+    parser.add_argument(
+        "--augmentation_probability",
+        type=float,
+        default=0.2,
+        help="Probability of data augmentation",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.001,
+        help="Weight decay",
+    )
+    parser.add_argument(
+        "--weight_norm",
+        type=float,
+        default=0.0001,
+        help="Weight norm",
+    )
+    parser.add_argument(
+        "--scheduler_t_init",
+        type=int,
+        default=15,
+        help="Initial value for the scheduler",
+    )
+    parser.add_argument(
+        "--scheduler_t_mult",
+        type=int,
+        default=2,
+        help="Multiplier for the scheduler",
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=11,
+        help='Random seed'
+    )
+    parser.add_argument(
+        '--dataset_id',
+        type=int,
+        default=1590,
+        help='Dataset id'
+    )
+    parser.add_argument(
+        '--test_split_size',
+        type=float,
+        default=0.2,
+        help='Test size'
+    )
+
+    args = parser.parse_args()
+
+    main(args)
