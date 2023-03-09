@@ -1,7 +1,7 @@
 import argparse
 from copy import deepcopy
-
-import wandb
+import json
+import os
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
@@ -10,6 +10,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
 import numpy as np
+import wandb
 
 from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
@@ -34,15 +35,15 @@ def main(args: argparse.Namespace) -> None:
     augmentation_probability = args.augmentation_probability
     weight_decay = args.weight_decay
     weight_norm = args.weight_norm
-    scheduler_t_init = args.scheduler_t_init
     scheduler_t_mult = args.scheduler_t_mult
+    nr_restarts = args.nr_restarts
 
     info = get_dataset(
         dataset_id,
         test_split_size=test_split_size,
         seed=seed,
     )
-
+    dataset_name = info['dataset_name']
     X_train = info['X_train']
     X_test = info['X_test']
     y_train = info['y_train']
@@ -61,7 +62,7 @@ def main(args: argparse.Namespace) -> None:
     weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
 
     # Train a random forest classifier
-    clf = RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=seed)
+    clf = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
     clf.fit(X_train, y_train)
     predictions = clf.predict(X_test)
     # calculate the balanced accuracy
@@ -72,12 +73,12 @@ def main(args: argparse.Namespace) -> None:
 
     # get random forest feature importances
     feature_importances = clf.feature_importances_
-    print(feature_importances)
     # sort the feature importances in descending order
     sorted_idx = np.argsort(feature_importances)[::-1]
     # get the names of the top 10 features
     top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
     print("Top 10 features: %s" % top_10_features)
+    print("Top 10 feature importances: %s" % feature_importances[sorted_idx[:10]])
 
     nr_features = X_train.shape[1]
     nr_classes = len(unique_classes)
@@ -85,15 +86,15 @@ def main(args: argparse.Namespace) -> None:
     network_configuration = {
         'nr_features': nr_features,
         'nr_classes': nr_classes,
-        'nr_blocks': args.nr_levels,
+        'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
-        #'cardinality': args.cardinality,
     }
 
     wandb.init(
         project='INN',
         config=args,
     )
+    wandb.config['dataset_name'] = dataset_name
 
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
@@ -109,20 +110,20 @@ def main(args: argparse.Namespace) -> None:
     )
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** 3 - 1), 1)
+    T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
     optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
     criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().to(dev))
     wandb.watch(hypernet, criterion, log='all', log_freq=10)
 
-    ensemble_snapshot_intervals = [T_0, 3 * T_0, 7 * T_0]
+    ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0, (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
     ensemble_snapshots = []
     iteration = 0
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
-        accuracy_value = 0
+        train_balanced_accuracy = 0
         for batch_idx, batch in enumerate(train_loader):
 
             iteration += 1
@@ -149,18 +150,18 @@ def main(args: argparse.Namespace) -> None:
             scheduler.step()
             predictions = torch.argmax(output, dim=1)
 
-            # calculate accuracy with pytorch
-            accuracy = torch.sum(predictions == y).item() / len(y)
+            # calculate balanced accuracy with pytorch
+            balanced_accuracy = balanced_accuracy_score(predictions.detach().cpu().numpy(), y.cpu().numpy())
 
             loss_value += loss.item()
-            accuracy_value += accuracy
+            train_balanced_accuracy += balanced_accuracy
             if iteration in ensemble_snapshot_intervals:
                 ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
 
         loss_value /= len(train_loader)
-        accuracy_value /= len(train_loader)
-        print(f'Epoch: {epoch}, Loss: {loss_value}, Accuracy: {accuracy_value}')
-        wandb.log({"Train:Loss": loss_value, "Train:Accuracy": accuracy_value})
+        train_balanced_accuracy /= len(train_loader)
+        print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
+        wandb.log({"Train:Loss": loss_value, "Train:Balanced_accuracy": train_balanced_accuracy})
 
 
 
@@ -226,13 +227,29 @@ def main(args: argparse.Namespace) -> None:
     wandb.run.summary["Top_10_features"] = top_10_features
     wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
 
+    output_info = {
+        'train_balanced_accuracy': train_balanced_accuracy,
+        'train_loss': loss_value,
+        'test_accuracy': accuracy,
+        'test_balanced_accuracy': balanced_accuracy,
+        'top_10_features': top_10_features,
+        'top_10_features_weights': weights[sorted_idx[:10]].tolist(),
+    }
+
+    output_directory = os.path.join(args.output_dir, f'{dataset_id}', f'{seed}')
+    os.makedirs(output_directory, exist_ok=True)
+
+    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
+        json.dump(output_info, f)
+
+    wandb.finish()
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
-        "--nr_levels",
+        "--nr_blocks",
         type=int,
         default=2,
         help="Number of levels in the hypernetwork",
@@ -242,12 +259,6 @@ if __name__ == "__main__":
         type=int,
         default=128,
         help="Number of hidden units in the hypernetwork",
-    )
-    parser.add_argument(
-        "--cardinality",
-        type=int,
-        default=4,
-        help="Number of transformations per level in the hypernetwork",
     )
     parser.add_argument(
         "--nr_epochs",
@@ -286,12 +297,6 @@ if __name__ == "__main__":
         help="Weight norm",
     )
     parser.add_argument(
-        "--scheduler_t_init",
-        type=int,
-        default=15,
-        help="Initial value for the scheduler",
-    )
-    parser.add_argument(
         "--scheduler_t_mult",
         type=int,
         default=2,
@@ -314,6 +319,18 @@ if __name__ == "__main__":
         type=float,
         default=0.2,
         help='Test size'
+    )
+    parser.add_argument(
+        '--nr_restarts',
+        type=int,
+        default=3,
+        help='Number of learning rate restarts',
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        default='.',
+        help='Directory to save the results',
     )
 
     args = parser.parse_args()

@@ -229,6 +229,7 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11) -> Dict:
 
     # Get the data
     dataset = openml.datasets.get_dataset(dataset_id)
+    dataset_name = dataset.name
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format='dataframe',
         target=dataset.default_target_attribute
@@ -241,5 +242,5 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11) -> Dict:
         test_split_size=test_split_size,
         seed=seed,
     )
-
+    info_dict['dataset_name'] = dataset_name
     return info_dict
