@@ -145,7 +145,14 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
         4: "fgsm",
     }
 
-    augmentation_type = augmentation_types[np.random.randint(1, 5)]
+    if len(numerical_features) == 0:
+        augmentation_types = {
+            1: "cutout",
+            2: "cutmix",
+            3: "fgsm",
+        }
+
+    augmentation_type = augmentation_types[np.random.randint(1, len(augmentation_types) + 1)]
     if augmentation_type == "cutmix":
         return prepare_data_for_cutmix(x, y, augmentation_prob)
     elif augmentation_type == "mixup":
