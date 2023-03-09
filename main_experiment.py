@@ -120,6 +120,9 @@ def main(args: argparse.Namespace) -> None:
     ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0, (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
     ensemble_snapshots = []
     iteration = 0
+
+    loss_per_epoch = []
+    train_balanced_accuracy_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
@@ -161,6 +164,8 @@ def main(args: argparse.Namespace) -> None:
         loss_value /= len(train_loader)
         train_balanced_accuracy /= len(train_loader)
         print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
+        loss_per_epoch.append(loss_value)
+        train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
         wandb.log({"Train:Loss": loss_value, "Train:Balanced_accuracy": train_balanced_accuracy})
 
 
@@ -228,8 +233,8 @@ def main(args: argparse.Namespace) -> None:
     wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
 
     output_info = {
-        'train_balanced_accuracy': train_balanced_accuracy,
-        'train_loss': loss_value,
+        'train_balanced_accuracy': train_balanced_accuracy_per_epoch,
+        'train_loss': loss_per_epoch,
         'test_accuracy': accuracy,
         'test_balanced_accuracy': balanced_accuracy,
         'top_10_features': top_10_features,
