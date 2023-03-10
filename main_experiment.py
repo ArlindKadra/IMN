@@ -220,10 +220,10 @@ def main(args: argparse.Namespace) -> None:
         'top_10_features_weights': weights[sorted_idx[:10]].tolist(),
     }
 
-    output_directory = os.path.join(args.output_dir, f'{dataset_id}', f'{seed}')
+    output_directory = os.path.join(args.output_dir, 'inn', f'{dataset_id}', f'{seed}')
     os.makedirs(output_directory, exist_ok=True)
 
-    with open(os.path.join(output_directory, 'inn', 'output_info.json'), 'w') as f:
+    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
 
     wandb.finish()
