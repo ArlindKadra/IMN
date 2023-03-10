@@ -76,7 +76,7 @@ def main(args: argparse.Namespace) -> None:
         config=args,
     )
     wandb.config['dataset_name'] = dataset_name
-
+    wandb.config['model_name'] = 'inn'
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
@@ -148,8 +148,6 @@ def main(args: argparse.Namespace) -> None:
         loss_per_epoch.append(loss_value)
         train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
         wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy})
-
-
 
     snapshot_models = []
     for snapshot_idx, snapshot in enumerate(ensemble_snapshots):
@@ -225,7 +223,7 @@ def main(args: argparse.Namespace) -> None:
     output_directory = os.path.join(args.output_dir, f'{dataset_id}', f'{seed}')
     os.makedirs(output_directory, exist_ok=True)
 
-    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
+    with open(os.path.join(output_directory, 'inn', 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
 
     wandb.finish()
