@@ -61,25 +61,6 @@ def main(args: argparse.Namespace) -> None:
     weight_per_class = total_weight / unique_classes.shape[0]
     weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
 
-    # Train a random forest classifier
-    clf = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
-    clf.fit(X_train, y_train)
-    predictions = clf.predict(X_test)
-    # calculate the balanced accuracy
-    balanced_accuracy = balanced_accuracy_score(y_test, predictions)
-    accuracy = accuracy_score(y_test, predictions)
-    print("Balanced accuracy: %0.2f" % balanced_accuracy)
-    print("Accuracy: %0.2f" % accuracy)
-
-    # get random forest feature importances
-    feature_importances = clf.feature_importances_
-    # sort the feature importances in descending order
-    sorted_idx = np.argsort(feature_importances)[::-1]
-    # get the names of the top 10 features
-    top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
-    print("Top 10 features: %s" % top_10_features)
-    print("Top 10 feature importances: %s" % feature_importances[sorted_idx[:10]])
-
     nr_features = X_train.shape[1]
     nr_classes = len(unique_classes)
 
@@ -166,7 +147,7 @@ def main(args: argparse.Namespace) -> None:
         print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
         loss_per_epoch.append(loss_value)
         train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
-        wandb.log({"Train:Loss": loss_value, "Train:Balanced_accuracy": train_balanced_accuracy})
+        wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy})
 
 
 
