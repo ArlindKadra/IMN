@@ -235,7 +235,7 @@ def preprocess_dataset(
 def get_dataset(dataset_id: int, test_split_size=0.2, seed=11) -> Dict:
 
     # Get the data
-    dataset = openml.datasets.get_dataset(dataset_id)
+    dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
     dataset_name = dataset.name
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format='dataframe',
