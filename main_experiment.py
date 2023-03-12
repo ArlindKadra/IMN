@@ -127,7 +127,8 @@ def main(args: argparse.Namespace) -> None:
                 output_adv = hypernet(adversarial_x, return_weights=False)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
 
-            l1_loss = torch.norm(weights, 1)
+            # take all values except the last one (bias)
+            l1_loss = torch.norm(weights[:-1], 1)
             loss = main_loss + weight_norm * l1_loss
             loss.backward()
             optimizer.step()

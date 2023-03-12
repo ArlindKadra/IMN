@@ -42,6 +42,7 @@ def distribution_methods(output_dir: str, method_names: list):
 
     pretty_method_names = {
         'inn': 'INN',
+        'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
     }
     method_results = []
@@ -64,6 +65,7 @@ def rank_methods(output_dir: str, method_names: list):
 
     pretty_method_names = {
         'inn': 'INN',
+        'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
@@ -118,6 +120,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'random_forest']
-rank_methods(result_directory, method_names)
+method_names = ['inn_v2', 'random_forest']
+#rank_methods(result_directory, method_names)
+distribution_methods(result_directory, method_names)
 analyze_results(result_directory, [])
