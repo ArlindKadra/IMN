@@ -95,7 +95,7 @@ def main(args: argparse.Namespace) -> None:
     hypernet = hypernet.to(dev)
     X_train = torch.tensor(X_train).float()
 
-    y_train = torch.tensor(y_train).float()
+    y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
     # Create dataloader for training
