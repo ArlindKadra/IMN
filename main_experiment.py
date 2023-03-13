@@ -226,7 +226,7 @@ def main(args: argparse.Namespace) -> None:
         predictions = np.array(predictions)
         predictions = (predictions > 0.5).astype(int)
     else:
-        predictions = np.argmax(predictions, dim=1)
+        predictions = np.argmax(predictions, axis=1)
 
     balanced_accuracy = balanced_accuracy_score(y_test, predictions)
     accuracy = accuracy_score(y_test, predictions)
@@ -330,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.01,
+        default=0.001,
         help="Weight norm",
     )
     parser.add_argument(
