@@ -6,7 +6,7 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, MinMaxScaler, QuantileTransformer
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 
@@ -127,6 +127,8 @@ def fgsm_attack(x: torch.Tensor, y: torch.Tensor, model: torch.nn.Module, criter
 
         # perform the attack
         outputs = model(x)
+        if outputs.shape[1] == 1:
+            outputs = outputs.squeeze(1)
         cost = criterion(outputs, y)
 
         grad = torch.autograd.grad(cost, x, retain_graph=False, create_graph=False)[0]
@@ -174,7 +176,7 @@ def preprocess_dataset(
 ) -> Dict:
 
     imputer = SimpleImputer(missing_values=np.nan, strategy='constant')
-    imputer.fit(X)
+
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -182,9 +184,6 @@ def preprocess_dataset(
         random_state=seed,
         stratify=y,
     )
-
-    X_train = imputer.transform(X_train)
-    X_test = imputer.transform(X_test)
 
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
     categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
@@ -204,6 +203,10 @@ def preprocess_dataset(
     column_transformer.fit(X_train)
     X_train = column_transformer.transform(X_train)
     X_test = column_transformer.transform(X_test)
+
+    imputer.fit(X_train)
+    X_train = imputer.transform(X_train)
+    X_test = imputer.transform(X_test)
 
     # scikit learn label encoder
     label_encoder = LabelEncoder()

@@ -2,8 +2,7 @@ import argparse
 from copy import deepcopy
 import json
 import os
-
-from sklearn.ensemble import RandomForestClassifier
+from math import exp
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
 
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -14,6 +13,16 @@ import wandb
 
 from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
+
+
+def sigmoid(x):
+    "Numerically-stable sigmoid function."
+    if x >= 0:
+        z = exp(-x)
+        return 1 / (1 + z)
+    else:
+        z = exp(x)
+        return z / (1 + z)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -55,18 +64,22 @@ def main(args: argparse.Namespace) -> None:
     del info
 
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
-
-    total_weight = y_train.shape[0]
-    unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
-    weight_per_class = total_weight / unique_classes.shape[0]
-    weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
-
     nr_features = X_train.shape[1]
+    unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
+
+    if nr_classes > 2:
+        total_weight = y_train.shape[0]
+        weight_per_class = total_weight / unique_classes.shape[0]
+        weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
+    else:
+        counts_one = np.sum(y_train, axis=0)
+        counts_zero = y_train.shape[0] - counts_one
+        weights = counts_zero / np.maximum(counts_one, 1)
 
     network_configuration = {
         'nr_features': nr_features,
-        'nr_classes': nr_classes,
+        'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
     }
@@ -81,7 +94,8 @@ def main(args: argparse.Namespace) -> None:
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
     X_train = torch.tensor(X_train).float()
-    y_train = torch.tensor(y_train).long()
+
+    y_train = torch.tensor(y_train).float()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
     # Create dataloader for training
@@ -95,12 +109,17 @@ def main(args: argparse.Namespace) -> None:
     # Train the hypernetwork
     optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
-    criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().to(dev))
-    wandb.watch(hypernet, criterion, log='all', log_freq=10)
+    if nr_classes > 2:
+        criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().to(dev))
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weights).float().to(dev))
 
+    wandb.watch(hypernet, criterion, log='all', log_freq=10)
     ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0, (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
     ensemble_snapshots = []
     iteration = 0
+
+    sigmoid_act_func = torch.nn.Sigmoid()
 
     loss_per_epoch = []
     train_balanced_accuracy_per_epoch = []
@@ -120,12 +139,29 @@ def main(args: argparse.Namespace) -> None:
             if len(info) == 4:
                 x, y_1, y_2, lam = info
                 output, weights = hypernet(x, return_weights=True)
+                if nr_classes == 2:
+                    output = output.squeeze(1)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
             else:
                 x, adversarial_x, y_1, y_2, lam = info
                 output, weights = hypernet(x, return_weights=True)
                 output_adv = hypernet(adversarial_x, return_weights=False)
+                if nr_classes == 2:
+                    output = output.squeeze(1)
+                    output_adv = output_adv.squeeze(1)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
+
+            weights = torch.abs(weights)
+            if nr_classes > 2:
+                for train_example_idx in range(weights.shape[0]):
+                    correct_class = y[train_example_idx]
+                    for predicted_class in range(weights.shape[2]):
+                        if predicted_class != correct_class:
+                            weights[train_example_idx, :, predicted_class] = 0
+
+                weights = torch.mean(weights, dim=2)
+
+            weights = torch.mean(weights, dim=0)
 
             # take all values except the last one (bias)
             l1_loss = torch.norm(weights[:-1], 1)
@@ -133,7 +169,12 @@ def main(args: argparse.Namespace) -> None:
             loss.backward()
             optimizer.step()
             scheduler.step()
-            predictions = torch.argmax(output, dim=1)
+
+            # threshold the predictions if the model is binary
+            if nr_classes == 2:
+                predictions = (sigmoid_act_func(output) > 0.5).int()
+            else:
+                predictions = torch.argmax(output, dim=1)
 
             # calculate balanced accuracy with pytorch
             balanced_accuracy = balanced_accuracy_score(predictions.detach().cpu().numpy(), y.cpu().numpy())
@@ -166,6 +207,7 @@ def main(args: argparse.Namespace) -> None:
     for snapshot_idx, snapshot in enumerate(snapshot_models):
         with torch.no_grad():
             output, model_weights = snapshot(X_test, return_weights=True)
+            output = output.squeeze(1)
             predictions.append([output.detach().to('cpu').numpy()])
             weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
 
@@ -178,7 +220,14 @@ def main(args: argparse.Namespace) -> None:
 
     # from series to list
     y_test = y_test.tolist()
-    predictions = np.argmax(predictions, axis=1)
+    # threshold the predictions if the model is binary
+    if nr_classes == 2:
+        predictions = [sigmoid(x) for x in predictions]
+        predictions = np.array(predictions)
+        predictions = (predictions > 0.5).astype(int)
+    else:
+        predictions = np.argmax(predictions, dim=1)
+
     balanced_accuracy = balanced_accuracy_score(y_test, predictions)
     accuracy = accuracy_score(y_test, predictions)
 
@@ -190,13 +239,16 @@ def main(args: argparse.Namespace) -> None:
 
     selected_weights = []
     for test_example_idx in range(weights.shape[0]):
-        # select the weights for the predicted class and also take the absolute values
+        # select the weights for the predicted class
         if y_test[test_example_idx] == predictions[test_example_idx]:
-            selected_weights.append(np.abs(weights[test_example_idx, :, predictions[test_example_idx]]))
+            if nr_classes > 2:
+                selected_weights.append(weights[test_example_idx, :, predictions[test_example_idx]])
+            else:
+                selected_weights.append(weights[test_example_idx, :])
 
     weights = np.array(selected_weights)
-    # remove last column from weights
     weights = weights[:, :-1]
+
     # sum the weights over all test examples
     weights = np.sum(weights, axis=0)
 
@@ -278,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.0001,
+        default=0.01,
         help="Weight norm",
     )
     parser.add_argument(
