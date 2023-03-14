@@ -120,7 +120,7 @@ def main(args: argparse.Namespace) -> None:
     iteration = 0
 
     sigmoid_act_func = torch.nn.Sigmoid()
-
+    softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
     train_balanced_accuracy_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
@@ -208,6 +208,10 @@ def main(args: argparse.Namespace) -> None:
         with torch.no_grad():
             output, model_weights = snapshot(X_test, return_weights=True)
             output = output.squeeze(1)
+            if nr_classes > 2:
+                output = softmax_act_func(output)
+            else:
+                output = sigmoid_act_func(output)
             predictions.append([output.detach().to('cpu').numpy()])
             weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
 
@@ -222,8 +226,6 @@ def main(args: argparse.Namespace) -> None:
     y_test = y_test.tolist()
     # threshold the predictions if the model is binary
     if nr_classes == 2:
-        predictions = [sigmoid(x) for x in predictions]
-        predictions = np.array(predictions)
         predictions = (predictions > 0.5).astype(int)
     else:
         predictions = np.argmax(predictions, axis=1)

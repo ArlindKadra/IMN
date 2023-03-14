@@ -85,13 +85,17 @@ def rank_methods(output_dir: str, method_names: list):
 
     for dataset_id in df['dataset_id'].unique():
         method_dataset_performances = []
-        for method_name in method_names:
-            # get test performance of method on dataset
-            method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_balanced_accuracy'].values[0]
-            method_dataset_performances.append(method_test_performance)
-            print(f'{method_name} {dataset_id}: {method_test_performance}')
-        # generate ranks using scipy
-        ranks = stats.rankdata(method_dataset_performances, method='average')
+        try:
+            for method_name in method_names:
+                # get test performance of method on dataset
+                method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_balanced_accuracy'].values[0]
+                method_dataset_performances.append(method_test_performance)
+                print(f'{method_name} {dataset_id}: {method_test_performance}')
+            # generate ranks using scipy
+            ranks = stats.rankdata(method_dataset_performances, method='average')
+        except IndexError:
+            print(f'No test performance found for {dataset_id}')
+            continue
 
         for rank_index, rank in enumerate(ranks):
             method_ranks[method_names[rank_index - 1]].append(ranks[rank_index])
@@ -120,7 +124,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn_v2', 'random_forest']
-#rank_methods(result_directory, method_names)
-distribution_methods(result_directory, method_names)
+method_names = ['inn', 'random_forest']
+rank_methods(result_directory, method_names)
+#distribution_methods(result_directory, method_names)
 analyze_results(result_directory, [])
