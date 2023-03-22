@@ -169,6 +169,7 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
 def preprocess_dataset(
     X: pd.DataFrame,
     y: pd.DataFrame,
+    encode_categorical: bool,
     categorical_indicator: List,
     attribute_names: List,
     test_split_size=0.2,
@@ -192,13 +193,13 @@ def preprocess_dataset(
     if len(numerical_features) > 0:
         numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
-    if len(categorical_features) > 0:
+    if len(categorical_features) > 0 and encode_categorical:
         categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1), categorical_features)
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(
         dataset_preprocessors,
-        remainder='drop',
+        remainder='passthrough',
     )
     column_transformer.fit(X_train)
     X_train = column_transformer.transform(X_train)
@@ -235,7 +236,8 @@ def preprocess_dataset(
     }
 
     return info_dict
-def get_dataset(dataset_id: int, test_split_size=0.2, seed=11) -> Dict:
+
+def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True) -> Dict:
 
     # Get the data
     dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
@@ -247,6 +249,7 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11) -> Dict:
     info_dict = preprocess_dataset(
         X,
         y,
+        encode_categorical,
         categorical_indicator,
         attribute_names,
         test_split_size=test_split_size,
