@@ -176,7 +176,27 @@ def preprocess_dataset(
     seed=11,
 ) -> Dict:
 
-    imputer = SimpleImputer(missing_values=np.nan, strategy='constant')
+    dropped_column_names = []
+    dropped_column_indices = []
+
+    for column_index, column_name in enumerate(X.keys()):
+        if X[column_name].isnull().sum() > len(X[column_name]) * 0.9:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
+
+    for column_index, column_name in enumerate(X.keys()):
+        if X[column_name].dtype == 'object' or X[column_name].dtype == 'category' or X[column_name].dtype == 'string':
+            if X[column_name].nunique() / len(X[column_name]) > 0.9:
+                dropped_column_names.append(column_name)
+                dropped_column_indices.append(column_index)
+        elif X[column_name].dtype == 'int' or X[column_name].dtype == 'float':
+            if X[column_name].nunique() / len(X[column_name]) < 0.05:
+                dropped_column_names.append(column_name)
+                dropped_column_indices.append(column_index)
+
+    X = X.drop(dropped_column_names, axis=1)
+    attribute_names = [attribute_name for attribute_name in attribute_names if attribute_name not in dropped_column_names]
+    categorical_indicator = [categorical_indicator[i] for i in range(len(categorical_indicator)) if i not in dropped_column_indices]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -188,6 +208,10 @@ def preprocess_dataset(
 
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
     categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
+
+    column_types = {}
+    for column_name in X_train.keys():
+        column_types[column_name] = X_train[column_name].dtype
 
     dataset_preprocessors = []
     if len(numerical_features) > 0:
@@ -204,16 +228,12 @@ def preprocess_dataset(
     column_transformer.fit(X_train)
     X_train = column_transformer.transform(X_train)
     X_test = column_transformer.transform(X_test)
+    # convert to dataframe and detect dtypes
+    # dataframe from numpy array
+    # create dataframe from numpy array
 
-    imputer.fit(X_train)
-    X_train = imputer.transform(X_train)
-    X_test = imputer.transform(X_test)
-
-    # scikit learn label encoder
-    label_encoder = LabelEncoder()
-    label_encoder.fit(y_train)
-    y_train = label_encoder.transform(y_train)
-    y_test = label_encoder.transform(y_test)
+    X_train = pd.DataFrame(X_train, columns=attribute_names)
+    X_test = pd.DataFrame(X_test, columns=attribute_names)
 
     if len(numerical_features) > 0:
         new_categorical_indicator = [False] * len(numerical_features)
@@ -225,6 +245,28 @@ def preprocess_dataset(
     if len(categorical_features) > 0:
         new_categorical_indicator.extend([True] * len(categorical_features))
         new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+
+    X_train = X_train.astype(column_types)
+    X_test = X_test.astype(column_types)
+
+    # pandas fill missing values for numerical columns with zeroes
+    for column_name in X_train.keys():
+        if X_train[column_name].dtype == 'int' or X_train[column_name].dtype == 'float':
+            X_train[column_name] = X_train[column_name].fillna(0)
+            X_test[column_name] = X_test[column_name].fillna(0)
+        elif X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
+            X_train[column_name].cat.add_categories('-1', inplace=True)
+            X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
+            X_train[column_name] = X_train[column_name].fillna('-1')
+            X_test[column_name].cat.add_categories('-1', inplace=True)
+            X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
+            X_test[column_name] = X_test[column_name].fillna('-1')
+
+    # scikit learn label encoder
+    label_encoder = LabelEncoder()
+    label_encoder.fit(y_train)
+    y_train = label_encoder.transform(y_train)
+    y_test = label_encoder.transform(y_test)
 
     info_dict = {
         'X_train': X_train,

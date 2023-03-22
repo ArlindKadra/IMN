@@ -15,16 +15,6 @@ from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
 
 
-def sigmoid(x):
-    "Numerically-stable sigmoid function."
-    if x >= 0:
-        z = exp(-x)
-        return 1 / (1 + z)
-    else:
-        z = exp(x)
-        return z / (1 + z)
-
-
 def main(args: argparse.Namespace) -> None:
 
     dev = torch.device(
@@ -53,8 +43,10 @@ def main(args: argparse.Namespace) -> None:
         seed=seed,
     )
     dataset_name = info['dataset_name']
-    X_train = info['X_train']
-    X_test = info['X_test']
+    X_train = info['X_train'].to_numpy()
+    X_train = X_train.astype(np.float32)
+    X_test = info['X_test'].to_numpy()
+    X_test = X_test.astype(np.float32)
     y_train = info['y_train']
     y_test = info['y_test']
     categorical_indicator = info['categorical_indicator']

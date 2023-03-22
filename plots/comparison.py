@@ -44,6 +44,7 @@ def distribution_methods(output_dir: str, method_names: list):
         'inn': 'INN',
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
+        'catboost': 'CatBoost',
     }
     method_results = []
     for method_name in method_names:
@@ -67,6 +68,7 @@ def rank_methods(output_dir: str, method_names: list):
         'inn': 'INN',
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
+        'catboost': 'CatBoost',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -102,11 +104,12 @@ def rank_methods(output_dir: str, method_names: list):
 
     # print mean rank for every method
     for method_name in method_names:
-        print(f'{method_name}: {np.mean(method_ranks[method_name])}')
+        print(f'{method_name}: {np.median(method_ranks[method_name])}')
 
     # prepare distribution plot
-    plt.boxplot([method_ranks[method_name] for method_name in method_names])
-    plt.xticks(range(1, len(method_names) + 1), pretty_names)
+    sns.violinplot(data=[method_ranks[method_name] for method_name in method_names])
+    #plt.boxplot([method_ranks[method_name] for method_name in method_names])
+    plt.xticks(range(0, len(method_names)), pretty_names)
     plt.ylabel('Rank')
     plt.savefig(os.path.join(output_dir, 'test_performance_rank_comparison.pdf'), bbox_inches="tight")
 
@@ -124,7 +127,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'random_forest']
+method_names = ['inn', 'random_forest', 'catboost']
 rank_methods(result_directory, method_names)
 #distribution_methods(result_directory, method_names)
 analyze_results(result_directory, [])
