@@ -189,10 +189,6 @@ def preprocess_dataset(
             if X[column_name].nunique() / len(X[column_name]) > 0.9:
                 dropped_column_names.append(column_name)
                 dropped_column_indices.append(column_index)
-        elif X[column_name].dtype == 'int' or X[column_name].dtype == 'float':
-            if X[column_name].nunique() / len(X[column_name]) < 0.05:
-                dropped_column_names.append(column_name)
-                dropped_column_indices.append(column_index)
 
     X = X.drop(dropped_column_names, axis=1)
     attribute_names = [attribute_name for attribute_name in attribute_names if attribute_name not in dropped_column_names]
@@ -217,7 +213,6 @@ def preprocess_dataset(
             column_types[column_name] = 'float64'
         else:
             raise ValueError("The column type must be one of 'object', 'category', 'string', 'int' or 'float'")
-
 
     dataset_preprocessors = []
     if len(numerical_features) > 0:
