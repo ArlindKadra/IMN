@@ -211,7 +211,13 @@ def preprocess_dataset(
 
     column_types = {}
     for column_name in X_train.keys():
-        column_types[column_name] = X_train[column_name].dtype
+        if X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
+            column_types[column_name] = 'category'
+        elif pd.api.types.is_numeric_dtype(X_train[column_name]):
+            column_types[column_name] = 'float64'
+        else:
+            raise ValueError("The column type must be one of 'object', 'category', 'string', 'int' or 'float'")
+
 
     dataset_preprocessors = []
     if len(numerical_features) > 0:
@@ -248,17 +254,16 @@ def preprocess_dataset(
 
     X_train = X_train.astype(column_types)
     X_test = X_test.astype(column_types)
-
     # pandas fill missing values for numerical columns with zeroes
     for column_name in X_train.keys():
         if X_train[column_name].dtype == 'int' or X_train[column_name].dtype == 'float':
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
         elif X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
-            X_train[column_name].cat.add_categories('-1', inplace=True)
+            X_train[column_name] = X_train[column_name].cat.add_categories('-1')
             X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
             X_train[column_name] = X_train[column_name].fillna('-1')
-            X_test[column_name].cat.add_categories('-1', inplace=True)
+            X_test[column_name] = X_test[column_name].cat.add_categories('-1')
             X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
             X_test[column_name] = X_test[column_name].fillna('-1')
 

@@ -275,6 +275,7 @@ def main(args: argparse.Namespace) -> None:
 
     wandb.finish()
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
