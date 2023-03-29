@@ -13,6 +13,8 @@ import wandb
 
 from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
+from dataset.tabular_dataset import TabularDataset
+from dataloader.tabular_dataloader import WrappedDataLoader
 
 
 def main(args: argparse.Namespace) -> None:
@@ -41,22 +43,39 @@ def main(args: argparse.Namespace) -> None:
         dataset_id,
         test_split_size=test_split_size,
         seed=seed,
+        encode_categorical=False,
     )
     dataset_name = info['dataset_name']
-    X_train = info['X_train'].to_numpy()
-    X_train = X_train.astype(np.float32)
-    X_test = info['X_test'].to_numpy()
-    X_test = X_test.astype(np.float32)
     y_train = info['y_train']
     y_test = info['y_test']
     categorical_indicator = info['categorical_indicator']
     attribute_names = info['attribute_names']
 
+    # pandas select columns from boolean indicator
+
+    categorical_train_features = info['X_train'].loc[:, categorical_indicator]
+    numerical_train_features = info['X_train'].loc[:, np.invert(categorical_indicator)]
+    categorical_test_features = info['X_test'].loc[:, categorical_indicator]
+    numerical_test_features = info['X_test'].loc[:, np.invert(categorical_indicator)]
+    categorical_feature_names = categorical_train_features.columns
+    from sklearn.preprocessing import OrdinalEncoder
+    enc = OrdinalEncoder(dtype=np.int32)
+    enc.fit(categorical_train_features)
+    categorical_train_features = enc.transform(categorical_train_features)
+    categorical_test_features = enc.transform(categorical_test_features)
+
+    # get number of unique values per column
+    unique_values_per_column = np.array([len(np.unique(categorical_train_features[:, i])) for i in range(categorical_train_features.shape[1])])
+    # column names of categorical features
+
+
+    numerical_train_features = numerical_train_features.to_numpy()
+    numerical_test_features = numerical_test_features.to_numpy()
+
     # the reference to info is not needed anymore
     del info
-
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
-    nr_features = X_train.shape[1]
+    nr_features = categorical_train_features.shape[1] + numerical_train_features.shape[1]
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
 
@@ -74,6 +93,8 @@ def main(args: argparse.Namespace) -> None:
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
+        'unique_values_per_column': unique_values_per_column,
+        'cat_col_names': categorical_feature_names,
     }
 
     wandb.init(
@@ -85,17 +106,10 @@ def main(args: argparse.Namespace) -> None:
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
-    X_train = torch.tensor(X_train).float()
 
-    y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
-    X_train = X_train.to(dev)
-    y_train = y_train.to(dev)
-    # Create dataloader for training
-    train_dataset = torch.utils.data.TensorDataset(
-        X_train,
-        y_train,
-    )
+    train_dataset = TabularDataset(numerical_train_features, categorical_train_features, y_train)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = WrappedDataLoader(train_loader, dev)
 
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
@@ -122,9 +136,9 @@ def main(args: argparse.Namespace) -> None:
         for batch_idx, batch in enumerate(train_loader):
 
             iteration += 1
-            x, y = batch
+            numerical_features, categorical_features, y = batch
             hypernet.eval()
-            info = augment_data(x, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
+            info = augment_data(, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
             hypernet.train()
             optimizer.zero_grad()
 
