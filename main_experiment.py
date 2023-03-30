@@ -2,9 +2,8 @@ import argparse
 from copy import deepcopy
 import json
 import os
-from math import exp
-from sklearn.metrics import balanced_accuracy_score, accuracy_score
 
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
@@ -12,6 +11,7 @@ import numpy as np
 import wandb
 
 from models.HyperNetworkNext import HyperNet
+#from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
 
 
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=15,
+        default=41159,
         help='Dataset id'
     )
     parser.add_argument(
