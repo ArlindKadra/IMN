@@ -41,14 +41,14 @@ class HyperNet(nn.Module):
 
     def forward(self, num_features, cat_features, return_weights: bool = False):
 
-        x = num_features.view(-1, self.nr_features)
+        x = num_features.view(-1, num_features.size(1))
 
-        embedded_cat_features = []
-        for module_index in range(self.embedding_modules):
-            embedded_cat_features.append(self.embedding_modules[module_index](cat_features[:, module_index]))
-
-        embedded_cat_features = torch.cat(embedded_cat_features, dim=1)
-        x = torch.cat([x, embedded_cat_features], dim=1)
+        if cat_features.size(1) > 0 :
+            embedded_cat_features = []
+            for module_index in range(len(self.embedding_modules)):
+                embedded_cat_features.append(self.embedding_modules[module_index](cat_features[:, module_index]))
+            embedded_cat_features = torch.cat(embedded_cat_features, dim=1)
+            x = torch.cat([x, embedded_cat_features], dim=1)
         input = x
 
         x = self.input_layer(x)

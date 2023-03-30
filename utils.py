@@ -50,7 +50,7 @@ def prepare_data_for_mixup(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
 
     # Shuffle the data
-    indices = torch.randperm(x.size(0))
+    indices = torch.randperm(x.shape[0])
     x_shuffled = x[indices]
     y_shuffled = y[indices]
 
@@ -61,12 +61,11 @@ def prepare_data_for_mixup(
         lam = 1
     else:
         # Generate the mixup mask per example and feature
-        for i in range(x.size(0)):
+        for i in range(x.shape[0]):
             cut_column_indices = torch.as_tensor(
                 np.random.choice(
-                    numerical_features,
-                    max(1, np.int32(len(numerical_fe
-            atures) * lam)),
+                    range(x.shape[1]),
+                    max(1, np.int32(x.shape[1] * lam)),
                     replace=False,
                 ),
                 dtype=torch.int64,
@@ -80,8 +79,11 @@ def prepare_data_for_mixup(
 def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features: List, cut_mix_prob: float = 0.5) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
 
     # Shuffle the data
-    indices = torch.randperm(x.size(0))
-    y_shuffled = y[indices]
+    indices = torch.randperm(x.shape[0])
+    try:
+        y_shuffled = y[indices]
+    except IndexError:
+        b = 6
 
     # Generate the lambda value
     lam = torch.distributions.beta.Beta(1, 1).sample()
@@ -90,13 +92,14 @@ def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features
         lam = 1
     else:
         # Generate the mixup mask per example and feature
-        for i in range(x.size(0)):
+        for i in range(x.shape[0]):
             cut_column_indices = np.random.choice(
-                range(x.size(1)),
-                max(1, np.int32(x.size(1) * lam)),
+                range(x.shape[1]),
+                max(1, np.int32(x.shape[1] * lam)),
                 replace=False,
             )
-
+            x[i, cut_column_indices] = 0
+            """
             cut_cat_indices = [i for i in cut_column_indices if i not in numerical_features]
             cut_numerical_indices = [i for i in cut_column_indices if i in numerical_features]
 
@@ -115,6 +118,7 @@ def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features
                 )
 
                 x[i, cut_numerical_indices] = 0
+            """
 
     return x, y, y_shuffled, lam
 
@@ -145,7 +149,7 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
         1: "mixup",
         2: "cutout",
         3: "cutmix",
-        4: "fgsm",
+        #4: "fgsm",
     }
 
     if len(numerical_features) == 0:
@@ -155,7 +159,7 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
             3: "fgsm",
         }
 
-    augmentation_type = augmentation_types[np.random.randint(1, len(augmentation_types) + 1)]
+    augmentation_type = augmentation_types[np.random.randint(1, len(augmentation_types))]
     if augmentation_type == "cutmix":
         return prepare_data_for_cutmix(x, y, augmentation_prob)
     elif augmentation_type == "mixup":

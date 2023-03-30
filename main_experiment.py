@@ -21,7 +21,7 @@ def main(args: argparse.Namespace) -> None:
 
     dev = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
-
+    dev = torch.device('cpu')
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.manual_seed(args.seed)
@@ -68,9 +68,8 @@ def main(args: argparse.Namespace) -> None:
     unique_values_per_column = np.array([len(np.unique(categorical_train_features[:, i])) for i in range(categorical_train_features.shape[1])])
     # column names of categorical features
 
-
-    numerical_train_features = numerical_train_features.to_numpy()
-    numerical_test_features = numerical_test_features.to_numpy()
+    numerical_train_features = numerical_train_features.to_numpy(dtype=np.float32)
+    numerical_test_features = numerical_test_features.to_numpy(dtype=np.float32)
 
     # the reference to info is not needed anymore
     del info
@@ -138,20 +137,24 @@ def main(args: argparse.Namespace) -> None:
             iteration += 1
             numerical_features, categorical_features, y = batch
             hypernet.eval()
-            info = augment_data(, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
+            info = augment_data(numerical_features, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
             hypernet.train()
             optimizer.zero_grad()
 
             if len(info) == 4:
-                x, y_1, y_2, lam = info
-                output, weights = hypernet(x, return_weights=True)
+                numerical_train_features, y_1, y_2, lam = info
+
+
+                output, weights = hypernet(numerical_train_features, categorical_features, return_weights=True)
                 if nr_classes == 2:
                     output = output.squeeze(1)
+                    y_1 = y_1.type(torch.float32)
+                    y_2 = y_2.type(torch.float32)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
             else:
-                x, adversarial_x, y_1, y_2, lam = info
-                output, weights = hypernet(x, return_weights=True)
-                output_adv = hypernet(adversarial_x, return_weights=False)
+                numerical_train_features, adversarial_numerical_train_features, y_1, y_2, lam = info
+                output, weights = hypernet(numerical_train_features, return_weights=True)
+                output_adv = hypernet(adversarial_numerical_train_features, return_weights=False)
                 if nr_classes == 2:
                     output = output.squeeze(1)
                     output_adv = output_adv.squeeze(1)
@@ -206,13 +209,15 @@ def main(args: argparse.Namespace) -> None:
         hypernet.eval()
         snapshot_models.append(hypernet)
 
-    X_test = torch.tensor(X_test).float()
-    X_test = X_test.to(dev)
+    numerical_test_features = torch.tensor(numerical_test_features).float()
+    categorical_test_features = torch.tensor(categorical_test_features).long()
+    numerical_test_features = numerical_test_features.to(dev)
+    categorical_test_features = categorical_test_features.to(dev)
     predictions = []
     weights = []
     for snapshot_idx, snapshot in enumerate(snapshot_models):
         with torch.no_grad():
-            output, model_weights = snapshot(X_test, return_weights=True)
+            output, model_weights = snapshot(numerical_test_features, categorical_test_features, return_weights=True)
             output = output.squeeze(1)
             if nr_classes > 2:
                 output = softmax_act_func(output)
@@ -309,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=105,
         help="Number of epochs",
     )
     parser.add_argument(
