@@ -10,8 +10,8 @@ import torch
 import numpy as np
 import wandb
 
-from models.HyperNetworkNext import HyperNet
-#from models.HyperNetwork import HyperNet
+#from models.HyperNetworkNext import HyperNet
+from models.HyperNetwork import HyperNet
 from utils import augment_data, get_dataset
 
 
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_blocks",
         type=int,
-        default=2,
+        default=6,
         help="Number of levels in the hypernetwork",
     )
     parser.add_argument(
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=41159,
+        default=15,
         help='Dataset id'
     )
     parser.add_argument(
