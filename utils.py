@@ -80,10 +80,7 @@ def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features
 
     # Shuffle the data
     indices = torch.randperm(x.shape[0])
-    try:
-        y_shuffled = y[indices]
-    except IndexError:
-        b = 6
+    y_shuffled = y[indices]
 
     # Generate the lambda value
     lam = torch.distributions.beta.Beta(1, 1).sample()

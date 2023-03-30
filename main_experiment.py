@@ -4,7 +4,7 @@ import json
 import os
 from math import exp
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
-
+import pandas as pd
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
@@ -60,14 +60,13 @@ def main(args: argparse.Namespace) -> None:
     categorical_feature_names = categorical_train_features.columns
     from sklearn.preprocessing import OrdinalEncoder
     enc = OrdinalEncoder(dtype=np.int32)
-    enc.fit(categorical_train_features)
+    enc.fit(pd.concat([categorical_train_features, categorical_test_features]))
     categorical_train_features = enc.transform(categorical_train_features)
     categorical_test_features = enc.transform(categorical_test_features)
 
     # get number of unique values per column
     unique_values_per_column = np.array([len(np.unique(categorical_train_features[:, i])) for i in range(categorical_train_features.shape[1])])
     # column names of categorical features
-
     numerical_train_features = numerical_train_features.to_numpy(dtype=np.float32)
     numerical_test_features = numerical_test_features.to_numpy(dtype=np.float32)
 
@@ -314,7 +313,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=105,
+        default=100,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -362,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
+        default=41159,
         help='Dataset id'
     )
     parser.add_argument(
