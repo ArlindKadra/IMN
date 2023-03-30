@@ -7,23 +7,25 @@ class HyperNet(nn.Module):
             self,
             nr_features: int = 32,
             nr_classes: int = 10,
-            nr_levels: int = 2,
+            nr_blocks: int = 2,
             hidden_size: int = 64,
             dropout_rate: float = 0.2,
             cardinality: int = 4,
     ):
         super(HyperNet, self).__init__()
-        self.nr_levels = nr_levels
+        self.nr_levels = nr_blocks
         self.hidden_size = hidden_size
 
         self.dropout_rate = dropout_rate
         self.cardinality = cardinality
         self.act_func = torch.nn.SELU()
+        self.batch_norm = nn.BatchNorm1d(self.hidden_size)
 
-        for level_index in range(nr_levels):
+        self.input_layer = nn.Linear(nr_features, hidden_size)
+        for level_index in range(self.nr_levels):
             module_list = nn.ModuleList()
             for i in range(cardinality):
-                module_list.append(self.make_residual_block(self.hidden_size if level_index != 0 else nr_features, self.hidden_size))
+                module_list.append(self.make_residual_block(self.hidden_size, self.hidden_size))
             setattr(self, f'level_{level_index}', module_list)
 
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
@@ -36,15 +38,16 @@ class HyperNet(nn.Module):
         x = x.view(-1, self.nr_features)
         input = x
 
+        x = self.input_layer(x)
+        x = self.batch_norm(x)
+        x = self.act_func(x)
+
+
         for i in range(self.nr_levels):
-            residual = x
+            residual = x.clone().detach()
             blocks = getattr(self, f'level_{i}')
-            x = blocks[0](residual)
-            for j in range(1, self.cardinality):
+            for j in range(0, self.cardinality):
                 x += blocks[j](residual)
-            if i == 0:
-                if self.residual_linear is not None:
-                    residual = self.residual_linear(residual)
             x = x + residual
             x = self.act_func(x)
 
@@ -64,7 +67,6 @@ class HyperNet(nn.Module):
 
         lower_embedding = int(output_features / self.cardinality)
         return nn.Sequential(
-
             nn.Linear(in_features, lower_embedding),
             nn.BatchNorm1d(int(lower_embedding)),
             self.act_func,

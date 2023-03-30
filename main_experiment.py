@@ -11,7 +11,7 @@ import torch
 import numpy as np
 import wandb
 
-from models.HyperNetwork import HyperNet
+from models.HyperNetworkNext import HyperNet
 from utils import augment_data, get_dataset
 
 
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
+        default=15,
         help='Dataset id'
     )
     parser.add_argument(
