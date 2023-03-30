@@ -233,9 +233,6 @@ def preprocess_dataset(
     # dataframe from numpy array
     # create dataframe from numpy array
 
-    X_train = pd.DataFrame(X_train, columns=attribute_names)
-    X_test = pd.DataFrame(X_test, columns=attribute_names)
-
     if len(numerical_features) > 0:
         new_categorical_indicator = [False] * len(numerical_features)
         new_attribute_names = [attribute_names[i] for i in numerical_features]
@@ -246,6 +243,9 @@ def preprocess_dataset(
     if len(categorical_features) > 0:
         new_categorical_indicator.extend([True] * len(categorical_features))
         new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+
+    X_train = pd.DataFrame(X_train, columns=new_attribute_names)
+    X_test = pd.DataFrame(X_test, columns=new_attribute_names)
 
     X_train = X_train.astype(column_types)
     X_test = X_test.astype(column_types)
