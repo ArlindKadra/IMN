@@ -4,7 +4,6 @@ import json
 import os
 
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
-from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
@@ -53,8 +52,6 @@ def main(args: argparse.Namespace) -> None:
     categorical_indicator = info['categorical_indicator']
     attribute_names = info['attribute_names']
 
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.25, random_state=42)
-
     # the reference to info is not needed anymore
     del info
 
@@ -95,10 +92,6 @@ def main(args: argparse.Namespace) -> None:
     y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
-    X_val = torch.tensor(X_val).float()
-    y_val = torch.tensor(y_val).float() if nr_classes == 2 else torch.tensor(y_val).long()
-    X_val = X_val.to(dev)
-    y_val = y_val.to(dev)
     # Create dataloader for training
     train_dataset = torch.utils.data.TensorDataset(
         X_train,
@@ -124,9 +117,6 @@ def main(args: argparse.Namespace) -> None:
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
     train_balanced_accuracy_per_epoch = []
-    patience_epochs = 10
-    patience_counter = 0
-    best_val_loss = np.inf
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
@@ -172,6 +162,7 @@ def main(args: argparse.Namespace) -> None:
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
 
             if interpretable:
+                """
                 weights = torch.abs(weights)
                 if nr_classes > 2:
                     for train_example_idx in range(weights.shape[0]):
@@ -183,9 +174,14 @@ def main(args: argparse.Namespace) -> None:
                     weights = torch.mean(weights, dim=2)
 
                 weights = torch.mean(weights, dim=0)
+                """
 
                 # take all values except the last one (bias)
-                l1_loss = torch.norm(weights[:-1], 1)
+                if nr_classes > 2:
+                    l1_loss = torch.norm(weights[:, :, :-1], 1)
+                else:
+                    l1_loss = torch.norm(weights[:, :-1], 1)
+
                 loss = main_loss + (weight_norm * l1_loss)
             else:
                 loss = main_loss
@@ -207,29 +203,12 @@ def main(args: argparse.Namespace) -> None:
             train_balanced_accuracy += balanced_accuracy
             if iteration in ensemble_snapshot_intervals:
                 ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
-                patience_counter = 0
-                best_val_loss = np.inf
 
         loss_value /= len(train_loader)
         train_balanced_accuracy /= len(train_loader)
         print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
         loss_per_epoch.append(loss_value)
         train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
-
-        hypernet.eval()
-        val_outputs = hypernet(X_val)
-        if nr_classes == 2:
-            val_outputs = val_outputs.squeeze(1)
-        val_loss = criterion(val_outputs, y_val)
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            patience_counter = 0
-        else:
-            patience_counter += 1
-        if patience_counter >= patience_epochs:
-            print('Early stopping')
-            ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
-            break
 
         wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy})
 
@@ -248,7 +227,6 @@ def main(args: argparse.Namespace) -> None:
     weights = []
     for snapshot_idx, snapshot in enumerate(snapshot_models):
         with torch.no_grad():
-
             if interpretable:
                 output, model_weights = snapshot(X_test, return_weights=True)
             else:
@@ -285,7 +263,8 @@ def main(args: argparse.Namespace) -> None:
     if interpretable:
         weights = np.array(weights)
         weights = np.squeeze(weights)
-        weights = np.mean(weights, axis=0)
+        if len(weights.shape) > 2:
+            weights = np.mean(weights, axis=0)
         selected_weights = []
         for test_example_idx in range(weights.shape[0]):
             # select the weights for the predicted class
@@ -340,7 +319,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_blocks",
         type=int,
-        default=2,
+        default=5,
         help="Number of levels in the hypernetwork",
     )
     parser.add_argument(
@@ -382,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.001,
+        default=0.0001,
         help="Weight norm",
     )
     parser.add_argument(
@@ -395,19 +374,19 @@ if __name__ == "__main__":
         '--seed',
         type=int,
         default=11,
-        help='Random seed'
+        help='Random seed',
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
-        help='Dataset id'
+        default=31,
+        help='Dataset id',
     )
     parser.add_argument(
         '--test_split_size',
         type=float,
         default=0.2,
-        help='Test size'
+        help='Test size',
     )
     parser.add_argument(
         '--nr_restarts',
