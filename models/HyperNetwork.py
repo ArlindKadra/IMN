@@ -18,7 +18,7 @@ class HyperNet(nn.Module):
         self.blocks = nn.ModuleList()
         self.dropout_rate = dropout_rate
         self.batch_norm = nn.BatchNorm1d(self.hidden_size)
-        self.act_func = torch.nn.ReLU()
+        self.act_func = torch.nn.GELU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
 
@@ -69,7 +69,7 @@ class HyperNet(nn.Module):
             super(HyperNet.BasicBlock, self).__init__()
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
-            self.relu = nn.ReLU()
+            self.gelu = nn.GELU()
             self.linear2 = nn.Linear(output_features, output_features)
             self.bn2 = nn.BatchNorm1d(output_features)
 
@@ -78,12 +78,12 @@ class HyperNet(nn.Module):
 
             out = self.linear1(x)
             out = self.bn1(out)
-            out = self.relu(out)
+            out = self.gelu(out)
 
             out = self.linear2(out)
             out = self.bn2(out)
 
             out += residual
-            out = self.relu(out)
+            out = self.gelu(out)
 
             return out

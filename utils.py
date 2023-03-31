@@ -216,10 +216,10 @@ def preprocess_dataset(
 
     dataset_preprocessors = []
     if len(numerical_features) > 0:
-        numerical_preprocessor = ('numerical', MinMaxScaler(), numerical_features)
+        numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
-        categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, dtype=np.int64), categorical_features)
+        categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1), categorical_features)
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(

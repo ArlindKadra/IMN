@@ -283,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_blocks",
         type=int,
-        default=6,
+        default=5,
         help="Number of levels in the hypernetwork",
     )
     parser.add_argument(
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=15,
+        default=31,
         help='Dataset id'
     )
     parser.add_argument(
