@@ -4,6 +4,7 @@ import json
 import os
 
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
+from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torch
 
@@ -11,7 +12,7 @@ import numpy as np
 import wandb
 
 #from models.HyperNetworkNext import HyperNet
-from models.HyperNetwork import HyperNet
+from models.hypernetwork import HyperNet
 from utils import augment_data, get_dataset
 
 
@@ -52,6 +53,8 @@ def main(args: argparse.Namespace) -> None:
     categorical_indicator = info['categorical_indicator']
     attribute_names = info['attribute_names']
 
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.25, random_state=42)
+
     # the reference to info is not needed anymore
     del info
 
@@ -81,7 +84,9 @@ def main(args: argparse.Namespace) -> None:
         config=args,
     )
     wandb.config['dataset_name'] = dataset_name
-    wandb.config['model_name'] = 'inn'
+    interpretable = args.interpretable
+    wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
+
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
@@ -90,6 +95,10 @@ def main(args: argparse.Namespace) -> None:
     y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
+    X_val = torch.tensor(X_val).float()
+    y_val = torch.tensor(y_val).float() if nr_classes == 2 else torch.tensor(y_val).long()
+    X_val = X_val.to(dev)
+    y_val = y_val.to(dev)
     # Create dataloader for training
     train_dataset = torch.utils.data.TensorDataset(
         X_train,
@@ -115,6 +124,9 @@ def main(args: argparse.Namespace) -> None:
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
     train_balanced_accuracy_per_epoch = []
+    patience_epochs = 10
+    patience_counter = 0
+    best_val_loss = np.inf
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
@@ -124,40 +136,60 @@ def main(args: argparse.Namespace) -> None:
             iteration += 1
             x, y = batch
             hypernet.eval()
-            info = augment_data(x, y, numerical_features, hypernet, criterion, augmentation_prob=augmentation_probability)
+            info = augment_data(
+                x,
+                y,
+                numerical_features,
+                hypernet,
+                criterion,
+                augmentation_prob=augmentation_probability,
+            )
             hypernet.train()
             optimizer.zero_grad()
 
             if len(info) == 4:
                 x, y_1, y_2, lam = info
-                output, weights = hypernet(x, return_weights=True)
+                if interpretable:
+                    output, weights = hypernet(x, return_weights=True)
+                else:
+                    output = hypernet(x)
+
                 if nr_classes == 2:
                     output = output.squeeze(1)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
             else:
                 x, adversarial_x, y_1, y_2, lam = info
-                output, weights = hypernet(x, return_weights=True)
-                output_adv = hypernet(adversarial_x, return_weights=False)
+                if interpretable:
+                    output, weights = hypernet(x, return_weights=True)
+                    output_adv = hypernet(adversarial_x)
+                else:
+                    output = hypernet(x)
+                    output_adv = hypernet(adversarial_x)
+
                 if nr_classes == 2:
                     output = output.squeeze(1)
                     output_adv = output_adv.squeeze(1)
                 main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
 
-            weights = torch.abs(weights)
-            if nr_classes > 2:
-                for train_example_idx in range(weights.shape[0]):
-                    correct_class = y[train_example_idx]
-                    for predicted_class in range(weights.shape[2]):
-                        if predicted_class != correct_class:
-                            weights[train_example_idx, :, predicted_class] = 0
+            if interpretable:
+                weights = torch.abs(weights)
+                if nr_classes > 2:
+                    for train_example_idx in range(weights.shape[0]):
+                        correct_class = y[train_example_idx]
+                        for predicted_class in range(weights.shape[2]):
+                            if predicted_class != correct_class:
+                                weights[train_example_idx, :, predicted_class] = 0
 
-                weights = torch.mean(weights, dim=2)
+                    weights = torch.mean(weights, dim=2)
 
-            weights = torch.mean(weights, dim=0)
+                weights = torch.mean(weights, dim=0)
 
-            # take all values except the last one (bias)
-            l1_loss = torch.norm(weights[:-1], 1)
-            loss = main_loss + weight_norm * l1_loss
+                # take all values except the last one (bias)
+                l1_loss = torch.norm(weights[:-1], 1)
+                loss = main_loss + (weight_norm * l1_loss)
+            else:
+                loss = main_loss
+
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -175,12 +207,30 @@ def main(args: argparse.Namespace) -> None:
             train_balanced_accuracy += balanced_accuracy
             if iteration in ensemble_snapshot_intervals:
                 ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
+                patience_counter = 0
+                best_val_loss = np.inf
 
         loss_value /= len(train_loader)
         train_balanced_accuracy /= len(train_loader)
         print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
         loss_per_epoch.append(loss_value)
         train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
+
+        hypernet.eval()
+        val_outputs = hypernet(X_val)
+        if nr_classes == 2:
+            val_outputs = val_outputs.squeeze(1)
+        val_loss = criterion(val_outputs, y_val)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+        if patience_counter >= patience_epochs:
+            print('Early stopping')
+            ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
+            break
+
         wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy})
 
     snapshot_models = []
@@ -198,21 +248,23 @@ def main(args: argparse.Namespace) -> None:
     weights = []
     for snapshot_idx, snapshot in enumerate(snapshot_models):
         with torch.no_grad():
-            output, model_weights = snapshot(X_test, return_weights=True)
+
+            if interpretable:
+                output, model_weights = snapshot(X_test, return_weights=True)
+            else:
+                output = snapshot(X_test)
             output = output.squeeze(1)
             if nr_classes > 2:
                 output = softmax_act_func(output)
             else:
                 output = sigmoid_act_func(output)
             predictions.append([output.detach().to('cpu').numpy()])
-            weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
+            if interpretable:
+                weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
 
     predictions = np.array(predictions)
-    weights = np.array(weights)
-    predictions = np.squeeze(predictions)
-    weights = np.squeeze(weights)
     predictions = np.mean(predictions, axis=0)
-    weights = np.mean(weights, axis=0)
+    predictions = np.squeeze(predictions)
 
     # from series to list
     y_test = y_test.tolist()
@@ -230,42 +282,47 @@ def main(args: argparse.Namespace) -> None:
 
     wandb.run.summary["Test:accuracy"] = accuracy
     wandb.run.summary["Test:balanced_accuracy"] = balanced_accuracy
+    if interpretable:
+        weights = np.array(weights)
+        weights = np.squeeze(weights)
+        weights = np.mean(weights, axis=0)
+        selected_weights = []
+        for test_example_idx in range(weights.shape[0]):
+            # select the weights for the predicted class
+            if y_test[test_example_idx] == predictions[test_example_idx]:
+                if nr_classes > 2:
+                    selected_weights.append(weights[test_example_idx, :, predictions[test_example_idx]])
+                else:
+                    selected_weights.append(weights[test_example_idx, :])
 
-    selected_weights = []
-    for test_example_idx in range(weights.shape[0]):
-        # select the weights for the predicted class
-        if y_test[test_example_idx] == predictions[test_example_idx]:
-            if nr_classes > 2:
-                selected_weights.append(weights[test_example_idx, :, predictions[test_example_idx]])
-            else:
-                selected_weights.append(weights[test_example_idx, :])
+        weights = np.array(selected_weights)
+        weights = weights[:, :-1]
 
-    weights = np.array(selected_weights)
-    weights = weights[:, :-1]
+        # sum the weights over all test examples
+        weights = np.sum(weights, axis=0)
 
-    # sum the weights over all test examples
-    weights = np.sum(weights, axis=0)
+        # normalize the weights
+        weights = weights / np.sum(weights)
 
-    # normalize the weights
-    weights = weights / np.sum(weights)
-
-    # print attribute name and weight for the top 10 features
-    sorted_idx = np.argsort(weights)[::-1]
-    top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
-    print("Top 10 features: %s" % top_10_features)
-    # print the weights of the top 10 features
-    print(weights[sorted_idx[:10]])
-    wandb.run.summary["Top_10_features"] = top_10_features
-    wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
+        # print attribute name and weight for the top 10 features
+        sorted_idx = np.argsort(weights)[::-1]
+        top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
+        print("Top 10 features: %s" % top_10_features)
+        # print the weights of the top 10 features
+        print(weights[sorted_idx[:10]])
+        wandb.run.summary["Top_10_features"] = top_10_features
+        wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
 
     output_info = {
         'train_balanced_accuracy': train_balanced_accuracy_per_epoch,
         'train_loss': loss_per_epoch,
         'test_accuracy': accuracy,
         'test_balanced_accuracy': balanced_accuracy,
-        'top_10_features': top_10_features,
-        'top_10_features_weights': weights[sorted_idx[:10]].tolist(),
     }
+
+    if interpretable:
+        output_info['top_10_features'] = top_10_features
+        output_info['top_10_features_weights'] = weights[sorted_idx[:10]].tolist()
 
     output_directory = os.path.join(args.output_dir, 'inn', f'{dataset_id}', f'{seed}')
     os.makedirs(output_directory, exist_ok=True)
@@ -283,7 +340,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_blocks",
         type=int,
-        default=5,
+        default=2,
         help="Number of levels in the hypernetwork",
     )
     parser.add_argument(
@@ -343,7 +400,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=1590,
         help='Dataset id'
     )
     parser.add_argument(
@@ -363,6 +420,12 @@ if __name__ == "__main__":
         type=str,
         default='.',
         help='Directory to save the results',
+    )
+    parser.add_argument(
+        '--interpretable',
+        action='store_true',
+        default=True,
+        help='Whether to use interpretable models',
     )
 
     args = parser.parse_args()

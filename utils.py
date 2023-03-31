@@ -6,9 +6,9 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, MinMaxScaler, QuantileTransformer
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
+
 
 def prepare_data_for_cutmix(
     x: torch.Tensor,
@@ -194,6 +194,13 @@ def preprocess_dataset(
     attribute_names = [attribute_name for attribute_name in attribute_names if attribute_name not in dropped_column_names]
     categorical_indicator = [categorical_indicator[i] for i in range(len(categorical_indicator)) if i not in dropped_column_indices]
 
+    column_category_values = []
+    # take pandas categories into account
+    for cat_indicator, column_name in zip(categorical_indicator, X.keys()):
+        if cat_indicator:
+            column_categories = X[column_name].cat.categories
+            column_category_values.append(column_categories)
+
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -226,7 +233,7 @@ def preprocess_dataset(
         dataset_preprocessors,
         remainder='passthrough',
     )
-    column_transformer.fit(X_train)
+    column_transformer.fit(pd.concat([X_train, X_test]))
     X_train = column_transformer.transform(X_train)
     X_test = column_transformer.transform(X_test)
     # convert to dataframe and detect dtypes
@@ -250,11 +257,11 @@ def preprocess_dataset(
     X_train = X_train.astype(column_types)
     X_test = X_test.astype(column_types)
     # pandas fill missing values for numerical columns with zeroes
-    for column_name in X_train.keys():
-        if X_train[column_name].dtype == 'int' or X_train[column_name].dtype == 'float':
+    for cat_indicator, column_name in zip(new_categorical_indicator, X_train.keys()):
+        if not cat_indicator:
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
-        elif X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
+        else:
             X_train[column_name] = X_train[column_name].cat.add_categories('-1')
             X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
             X_train[column_name] = X_train[column_name].fillna('-1')
