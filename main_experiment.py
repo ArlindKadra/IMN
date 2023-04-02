@@ -2,6 +2,7 @@ import argparse
 from copy import deepcopy
 import json
 import os
+import time
 
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -84,6 +85,7 @@ def main(args: argparse.Namespace) -> None:
     interpretable = args.interpretable
     wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
 
+    start_time = time.time()
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
@@ -308,11 +310,13 @@ def main(args: argparse.Namespace) -> None:
         wandb.run.summary["Top_10_features"] = top_10_features
         wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
 
+    end_time = time.time()
     output_info = {
         'train_balanced_accuracy': train_balanced_accuracy_per_epoch,
         'train_loss': loss_per_epoch,
         'test_accuracy': accuracy,
         'test_balanced_accuracy': balanced_accuracy,
+        'time': end_time - start_time,
     }
 
     if interpretable:
@@ -324,6 +328,9 @@ def main(args: argparse.Namespace) -> None:
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
+
+    # save model
+    torch.save(hypernet.state_dict(), os.path.join(output_directory, 'model.pt'))
 
     wandb.finish()
 
