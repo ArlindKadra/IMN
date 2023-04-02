@@ -6,7 +6,7 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 
 
@@ -174,6 +174,7 @@ def preprocess_dataset(
     attribute_names: List,
     test_split_size=0.2,
     seed=11,
+    encoding_type: str = "ordinal",
 ) -> Dict:
 
     dropped_column_names = []
@@ -198,7 +199,7 @@ def preprocess_dataset(
     # take pandas categories into account
     for cat_indicator, column_name in zip(categorical_indicator, X.keys()):
         if cat_indicator:
-            column_categories = X[column_name].cat.categories
+            column_categories = list(X[column_name].cat.categories)
             column_category_values.append(column_categories)
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -226,14 +227,17 @@ def preprocess_dataset(
         numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
-        categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, categories=column_category_values), categorical_features)
+        if encoding_type == "ordinal":
+            categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, categories=column_category_values), categorical_features)
+        else:
+            categorical_preprocessor = ('categorical', OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values), categorical_features)
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(
         dataset_preprocessors,
         remainder='passthrough',
     )
-    column_transformer.fit(pd.concat([X_train, X_test]))
+    column_transformer.fit(X_train)
     X_train = column_transformer.transform(X_train)
     X_test = column_transformer.transform(X_test)
     # convert to dataframe and detect dtypes
@@ -248,26 +252,33 @@ def preprocess_dataset(
         new_attribute_names = []
 
     if len(categorical_features) > 0:
-        new_categorical_indicator.extend([True] * len(categorical_features))
-        new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+        if encoding_type == "ordinal":
+            new_categorical_indicator.extend([True] * len(categorical_features))
+            new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+        else:
+            for i in range(len(column_category_values)):
+                new_categorical_indicator.extend([True] * len(column_category_values[i]))
+                new_attribute_names.extend([attribute_names[categorical_features[i]] + '_' + str(category) for category in column_category_values[i]])
 
     X_train = pd.DataFrame(X_train, columns=new_attribute_names)
     X_test = pd.DataFrame(X_test, columns=new_attribute_names)
 
-    X_train = X_train.astype(column_types)
-    X_test = X_test.astype(column_types)
+    if encoding_type == "ordinal":
+        X_train = X_train.astype(column_types)
+        X_test = X_test.astype(column_types)
     # pandas fill missing values for numerical columns with zeroes
     for cat_indicator, column_name in zip(new_categorical_indicator, X_train.keys()):
         if not cat_indicator:
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
         else:
-            X_train[column_name] = X_train[column_name].cat.add_categories('-1')
-            X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
-            X_train[column_name] = X_train[column_name].fillna('-1')
-            X_test[column_name] = X_test[column_name].cat.add_categories('-1')
-            X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
-            X_test[column_name] = X_test[column_name].fillna('-1')
+            if encoding_type == "ordinal":
+                X_train[column_name] = X_train[column_name].cat.add_categories('-1')
+                X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
+                X_train[column_name] = X_train[column_name].fillna('-1')
+                X_test[column_name] = X_test[column_name].cat.add_categories('-1')
+                X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
+                X_test[column_name] = X_test[column_name].fillna('-1')
 
     # scikit learn label encoder
     label_encoder = LabelEncoder()
@@ -286,7 +297,7 @@ def preprocess_dataset(
 
     return info_dict
 
-def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True) -> Dict:
+def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True, encoding_type: str ='ordinal') -> Dict:
 
     # Get the data
     dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
@@ -303,6 +314,7 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorica
         attribute_names,
         test_split_size=test_split_size,
         seed=seed,
+        encoding_type=encoding_type,
     )
     info_dict['dataset_name'] = dataset_name
     return info_dict

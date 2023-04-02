@@ -45,6 +45,7 @@ def distribution_methods(output_dir: str, method_names: list):
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
         'catboost': 'CatBoost',
+        'tabresnet': 'TabResNet',
     }
     method_results = []
     for method_name in method_names:
@@ -69,6 +70,7 @@ def rank_methods(output_dir: str, method_names: list):
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
         'catboost': 'CatBoost',
+        'tabresnet': 'TabResNet',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -83,7 +85,6 @@ def rank_methods(output_dir: str, method_names: list):
     method_ranks = dict()
     for method_name in method_names:
         method_ranks[method_name] = []
-
 
     for dataset_id in df['dataset_id'].unique():
         method_dataset_performances = []
@@ -127,7 +128,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'catboost']
+method_names = ['inn', 'catboost', 'random_forest']
 rank_methods(result_directory, method_names)
 #distribution_methods(result_directory, method_names)
 analyze_results(result_directory, [])

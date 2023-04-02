@@ -10,7 +10,6 @@ import torch
 import numpy as np
 import wandb
 
-#from models.HyperNetworkNext import HyperNet
 from models.hypernetwork import HyperNet
 from utils import augment_data, get_dataset
 
@@ -41,6 +40,7 @@ def main(args: argparse.Namespace) -> None:
         dataset_id,
         test_split_size=test_split_size,
         seed=seed,
+        encoding_type=args.encoding_type,
     )
     dataset_name = info['dataset_name']
     X_train = info['X_train'].to_numpy()
@@ -87,8 +87,12 @@ def main(args: argparse.Namespace) -> None:
     # Train a hypernetwork
     hypernet = HyperNet(**network_configuration)
     hypernet = hypernet.to(dev)
-    X_train = torch.tensor(X_train).float()
+    try:
+        hypernet = torch.compile(hypernet)
+    except RuntimeError:
+        print('Could not compile the hypernetwork. Continuing without compilation.')
 
+    X_train = torch.tensor(X_train).float()
     y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
@@ -116,6 +120,8 @@ def main(args: argparse.Namespace) -> None:
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
+    specify_weight_norm = True
+    weight_norm = 1
     train_balanced_accuracy_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
@@ -178,9 +184,19 @@ def main(args: argparse.Namespace) -> None:
 
                 # take all values except the last one (bias)
                 if nr_classes > 2:
-                    l1_loss = torch.norm(weights[:, :, :-1], 1)
+                    weights = torch.squeeze(weights)
+                    weights = weights[:, :-1]
                 else:
-                    l1_loss = torch.norm(weights[:, :-1], 1)
+                    weights = torch.squeeze(weights, dim=2)
+                    weights = weights[:, :-1]
+
+                l1_loss = torch.norm(weights)
+
+                if specify_weight_norm:
+                    while (weight_norm * l1_loss) > main_loss:
+                        weight_norm = weight_norm / 10
+                        print(f'Weight norm: {weight_norm}')
+                        specify_weight_norm = False
 
                 loss = main_loss + (weight_norm * l1_loss)
             else:
@@ -303,7 +319,7 @@ def main(args: argparse.Namespace) -> None:
         output_info['top_10_features'] = top_10_features
         output_info['top_10_features_weights'] = weights[sorted_idx[:10]].tolist()
 
-    output_directory = os.path.join(args.output_dir, 'inn', f'{dataset_id}', f'{seed}')
+    output_directory = os.path.join(args.output_dir, 'inn' if interpretable else 'tabresnet', f'{dataset_id}', f'{seed}')
     os.makedirs(output_directory, exist_ok=True)
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
@@ -319,7 +335,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_blocks",
         type=int,
-        default=5,
+        default=2,
         help="Number of levels in the hypernetwork",
     )
     parser.add_argument(
@@ -331,19 +347,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=50,
         help="Number of epochs",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=128,
+        default=64,
         help="Batch size",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.001,
+        default=0.01,
         help="Learning rate",
     )
     parser.add_argument(
@@ -355,7 +371,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.001,
+        default=0.01,
         help="Weight decay",
     )
     parser.add_argument(
@@ -405,6 +421,12 @@ if __name__ == "__main__":
         action='store_true',
         default=True,
         help='Whether to use interpretable models',
+    )
+    parser.add_argument(
+        '--encoding_type',
+        type=str,
+        default='ordinal',
+        help='Encoding type',
     )
 
     args = parser.parse_args()
