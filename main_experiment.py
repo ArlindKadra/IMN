@@ -5,7 +5,7 @@ import os
 import time
 
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
 import torch
 
 import numpy as np
@@ -33,7 +33,6 @@ def main(args: argparse.Namespace) -> None:
     learning_rate = args.learning_rate
     augmentation_probability = args.augmentation_probability
     weight_decay = args.weight_decay
-    weight_norm = args.weight_norm
     scheduler_t_mult = args.scheduler_t_mult
     nr_restarts = args.nr_restarts
 
@@ -65,10 +64,21 @@ def main(args: argparse.Namespace) -> None:
         total_weight = y_train.shape[0]
         weight_per_class = total_weight / unique_classes.shape[0]
         weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
+        instance_weights = [weights[y_train[i]] for i in range(y_train.shape[0])]
     else:
         counts_one = np.sum(y_train, axis=0)
         counts_zero = y_train.shape[0] - counts_one
         weights = counts_zero / np.maximum(counts_one, 1)
+        unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
+        total_weight = y_train.shape[0]
+        weight_per_class = total_weight / unique_classes.shape[0]
+        weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
+        instance_weights = [weights[y_train[i]] for i in range(y_train.shape[0])]
+
+        #weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
+        #instance_weights = [weights if y_train[i] == 1 else counts_one / np.maximum(counts_zero, 1) for i in range(y_train.shape[0])]
+
+    weights = torch.tensor(weights).float().to(dev)
 
     network_configuration = {
         'nr_features': nr_features,
@@ -103,27 +113,34 @@ def main(args: argparse.Namespace) -> None:
         X_train,
         y_train,
     )
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    sampler = torch.utils.data.sampler.WeightedRandomSampler(instance_weights, X_train.size(0), replacement=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=sampler)
 
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
     optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+    scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+    def warmup(current_step: int):
+        return float(current_step / (5 * len(train_loader)))
+
+    scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
+    scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
     if nr_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().to(dev))
+        criterion = torch.nn.CrossEntropyLoss()
     else:
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weights).float().to(dev))
+        criterion = torch.nn.BCEWithLogitsLoss()
 
     wandb.watch(hypernet, criterion, log='all', log_freq=10)
     ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0, (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
+
     ensemble_snapshots = []
     iteration = 0
 
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
-    specify_weight_norm = True
-    weight_norm = 1
+    weight_norm = 1 / (batch_size * (nr_classes if nr_classes > 2 else 1))
     train_balanced_accuracy_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
@@ -193,13 +210,14 @@ def main(args: argparse.Namespace) -> None:
                     weights = weights[:, :-1]
 
                 l1_loss = torch.norm(weights)
-
+                """
                 if specify_weight_norm:
+                    
                     while (weight_norm * l1_loss) > main_loss:
                         weight_norm = weight_norm / 10
                         print(f'Weight norm: {weight_norm}')
                         specify_weight_norm = False
-
+                """
                 loss = main_loss + (weight_norm * l1_loss)
             else:
                 loss = main_loss
@@ -228,7 +246,7 @@ def main(args: argparse.Namespace) -> None:
         loss_per_epoch.append(loss_value)
         train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
 
-        wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy})
+        wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy, "Learning rate": optimizer.param_groups[0]['lr']})
 
     snapshot_models = []
     for snapshot_idx, snapshot in enumerate(ensemble_snapshots):
@@ -354,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=50,
+        default=100,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -372,7 +390,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--augmentation_probability",
         type=float,
-        default=0.2,
+        default=0.5,
         help="Probability of data augmentation",
     )
     parser.add_argument(
@@ -380,12 +398,6 @@ if __name__ == "__main__":
         type=float,
         default=0.01,
         help="Weight decay",
-    )
-    parser.add_argument(
-        "--weight_norm",
-        type=float,
-        default=0.0001,
-        help="Weight norm",
     )
     parser.add_argument(
         "--scheduler_t_mult",
@@ -402,7 +414,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=41165,
         help='Dataset id',
     )
     parser.add_argument(

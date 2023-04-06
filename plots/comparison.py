@@ -129,6 +129,6 @@ result_directory = os.path.expanduser(
 )
 
 method_names = ['inn', 'catboost', 'random_forest']
-rank_methods(result_directory, method_names)
-#distribution_methods(result_directory, method_names)
+#rank_methods(result_directory, method_names)
+distribution_methods(result_directory, method_names)
 analyze_results(result_directory, [])

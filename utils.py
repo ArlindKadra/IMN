@@ -8,6 +8,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 
 def prepare_data_for_cutmix(
@@ -228,7 +229,7 @@ def preprocess_dataset(
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
         if encoding_type == "ordinal":
-            categorical_preprocessor = ('categorical', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, categories=column_category_values), categorical_features)
+            categorical_preprocessor = ('categorical', Pipeline([('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, encoded_missing_value=-1, categories=column_category_values)), ('scaler', StandardScaler())]), categorical_features)
         else:
             categorical_preprocessor = ('categorical', OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values), categorical_features)
         dataset_preprocessors.append(categorical_preprocessor)
@@ -271,14 +272,6 @@ def preprocess_dataset(
         if not cat_indicator:
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
-        else:
-            if encoding_type == "ordinal":
-                X_train[column_name] = X_train[column_name].cat.add_categories('-1')
-                X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
-                X_train[column_name] = X_train[column_name].fillna('-1')
-                X_test[column_name] = X_test[column_name].cat.add_categories('-1')
-                X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
-                X_test[column_name] = X_test[column_name].fillna('-1')
 
     # scikit learn label encoder
     label_encoder = LabelEncoder()
