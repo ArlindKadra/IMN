@@ -119,7 +119,7 @@ def main(args: argparse.Namespace) -> None:
 
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
-    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay, betas=(0.9, 0.95), eps=1e-8)
     scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
     def warmup(current_step: int):
         return float(current_step / (5 * len(train_loader)))
@@ -127,7 +127,7 @@ def main(args: argparse.Namespace) -> None:
     scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
     scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
     if nr_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
     else:
         criterion = torch.nn.BCEWithLogitsLoss()
 
@@ -300,7 +300,9 @@ def main(args: argparse.Namespace) -> None:
         weights = np.array(weights)
         weights = np.squeeze(weights)
         if len(weights.shape) > 2:
-            weights = np.mean(weights, axis=0)
+            weights = weights[-1, :, :]
+            weights = np.squeeze(weights)
+
         selected_weights = []
         for test_example_idx in range(weights.shape[0]):
             # select the weights for the predicted class
@@ -390,7 +392,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--augmentation_probability",
         type=float,
-        default=0.5,
+        default=0.2,
         help="Probability of data augmentation",
     )
     parser.add_argument(
@@ -414,7 +416,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=41165,
+        default=31,
         help='Dataset id',
     )
     parser.add_argument(
