@@ -138,6 +138,33 @@ def fgsm_attack(x: torch.Tensor, y: torch.Tensor, model: torch.nn.Module, criter
 
     return adv_data
 
+def random_noise(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    augmentation_prob: float = 0.5,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+
+
+    # Generate the lambda value
+    lam = torch.distributions.beta.Beta(1, 1).sample()
+
+    if np.random.rand() > augmentation_prob:
+        lam = 1
+    else:
+        # Generate the mixup mask per example and feature
+        for i in range(x.size(0)):
+            cut_column_indices = torch.as_tensor(
+                np.random.choice(
+                    range(x.size(1)),
+                    max(1, np.int32(x.size(1) * lam)),
+                    replace=False,
+                ),
+                dtype=torch.int64,
+            )
+            x[i, cut_column_indices] = torch.add(x[i, cut_column_indices], (0.1 ** 0.5) * torch.randn(x[i, cut_column_indices].shape).to(x.device))
+
+    return x, y, y, 1
+
 
 def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, model, criterion, augmentation_prob: float = 0.5) -> Tuple:
 
@@ -146,6 +173,7 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
         2: "cutout",
         3: "cutmix",
         4: "fgsm",
+        5: "random_noise",
     }
 
     if len(numerical_features) == 0:
@@ -153,6 +181,7 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
             1: "cutout",
             2: "cutmix",
             3: "fgsm",
+            4: "random_noise",
         }
 
     augmentation_type = augmentation_types[np.random.randint(1, len(augmentation_types) + 1)]
@@ -164,6 +193,8 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
         return prepare_data_for_cutout(x, y, numerical_features, augmentation_prob)
     elif augmentation_type == "fgsm":
         return x, fgsm_attack(x, y, model, criterion, augmentation_prob, 0.007), y, y, 0.5
+    elif augmentation_type == "random_noise":
+        return random_noise(x, y, augmentation_prob)
     else:
         raise ValueError("The augmentation type must be one of 'cutmix', 'mixup' or 'cutout'")
 
@@ -267,11 +298,17 @@ def preprocess_dataset(
     if encoding_type == "ordinal":
         X_train = X_train.astype(column_types)
         X_test = X_test.astype(column_types)
+
     # pandas fill missing values for numerical columns with zeroes
     for cat_indicator, column_name in zip(new_categorical_indicator, X_train.keys()):
         if not cat_indicator:
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
+        else:
+            # categorical variables where not encoded
+            if not encode_categorical:
+                X_train[column_name] = X_train[column_name].fillna('missing')
+                X_test[column_name] = X_test[column_name].fillna('missing')
 
     # scikit learn label encoder
     label_encoder = LabelEncoder()

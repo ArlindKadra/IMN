@@ -9,14 +9,12 @@ class HyperNet(nn.Module):
             nr_classes: int = 10,
             nr_blocks: int = 0,
             hidden_size: int = 64,
-            dropout_rate: float = 0.6,
             **kwargs,
     ):
         super(HyperNet, self).__init__()
         self.nr_blocks = nr_blocks
         self.hidden_size = hidden_size
         self.blocks = nn.ModuleList()
-        self.dropout_rate = dropout_rate
         self.batch_norm = nn.BatchNorm1d(self.hidden_size)
         self.act_func = torch.nn.GELU()
         self.nr_features = nr_features
@@ -26,7 +24,7 @@ class HyperNet(nn.Module):
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.output_layer = nn.Linear(hidden_size, nr_features * nr_classes)
+        self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -50,7 +48,9 @@ class HyperNet(nn.Module):
             x = self.blocks[i](x)
 
         w = self.output_layer(x)
-        w = w.view(-1, self.nr_features, self.nr_classes)
+        # add column of ones to the input variable to account for the intercept
+        input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
+        w = w.view(-1, self.nr_features + 1, self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
 
         if return_weights:
@@ -69,7 +69,6 @@ class HyperNet(nn.Module):
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
             self.gelu = nn.GELU()
-            self.dropout = nn.Dropout(0.2)
             self.linear2 = nn.Linear(output_features, output_features)
             self.bn2 = nn.BatchNorm1d(output_features)
 
@@ -79,7 +78,6 @@ class HyperNet(nn.Module):
             out = self.linear1(x)
             out = self.bn1(out)
             out = self.gelu(out)
-
             out = self.linear2(out)
             out = self.bn2(out)
 

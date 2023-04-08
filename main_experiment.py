@@ -4,10 +4,12 @@ import json
 import os
 import time
 
-from sklearn.metrics import balanced_accuracy_score, accuracy_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score
+from sklearn.utils.class_weight import compute_class_weight
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
+from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import torch
-
+import pandas as pd
 import numpy as np
 import wandb
 
@@ -42,6 +44,7 @@ def main(args: argparse.Namespace) -> None:
         seed=seed,
         encoding_type=args.encoding_type,
     )
+
     dataset_name = info['dataset_name']
     X_train = info['X_train'].to_numpy()
     X_train = X_train.astype(np.float32)
@@ -60,25 +63,8 @@ def main(args: argparse.Namespace) -> None:
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
 
-    if nr_classes > 2:
-        total_weight = y_train.shape[0]
-        weight_per_class = total_weight / unique_classes.shape[0]
-        weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
-        instance_weights = [weights[y_train[i]] for i in range(y_train.shape[0])]
-    else:
-        counts_one = np.sum(y_train, axis=0)
-        counts_zero = y_train.shape[0] - counts_one
-        weights = counts_zero / np.maximum(counts_one, 1)
-        unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
-        total_weight = y_train.shape[0]
-        weight_per_class = total_weight / unique_classes.shape[0]
-        weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
-        instance_weights = [weights[y_train[i]] for i in range(y_train.shape[0])]
-
-        #weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
-        #instance_weights = [weights if y_train[i] == 1 else counts_one / np.maximum(counts_zero, 1) for i in range(y_train.shape[0])]
-
-    weights = torch.tensor(weights).float().to(dev)
+    class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
+    instance_weights = [class_weights[y_train[i]] for i in range(y_train.shape[0])]
 
     network_configuration = {
         'nr_features': nr_features,
@@ -119,8 +105,9 @@ def main(args: argparse.Namespace) -> None:
 
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
-    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay, betas=(0.9, 0.95), eps=1e-8)
+    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+
     def warmup(current_step: int):
         return float(current_step / (5 * len(train_loader)))
 
@@ -140,12 +127,12 @@ def main(args: argparse.Namespace) -> None:
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
-    weight_norm = 1 / (batch_size * (nr_classes if nr_classes > 2 else 1))
-    train_balanced_accuracy_per_epoch = []
+    weight_norm = 0.1 / (batch_size * (nr_classes if nr_classes > 2 else 1))
+    train_auroc_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
         loss_value = 0
-        train_balanced_accuracy = 0
+        train_auroc = 0
         for batch_idx, batch in enumerate(train_loader):
 
             iteration += 1
@@ -204,12 +191,10 @@ def main(args: argparse.Namespace) -> None:
                 # take all values except the last one (bias)
                 if nr_classes > 2:
                     weights = torch.squeeze(weights)
-                    weights = weights[:, :-1]
                 else:
                     weights = torch.squeeze(weights, dim=2)
-                    weights = weights[:, :-1]
 
-                l1_loss = torch.norm(weights)
+                l1_loss = torch.norm(weights, 1)
                 """
                 if specify_weight_norm:
                     
@@ -233,20 +218,23 @@ def main(args: argparse.Namespace) -> None:
                 predictions = torch.argmax(output, dim=1)
 
             # calculate balanced accuracy with pytorch
-            balanced_accuracy = balanced_accuracy_score(predictions.detach().cpu().numpy(), y.cpu().numpy())
+            if nr_classes == 2:
+                batch_auroc = binary_auroc(output, y)
+            else:
+                batch_auroc = multiclass_auroc(output, y, num_classes=nr_classes)
 
             loss_value += loss.item()
-            train_balanced_accuracy += balanced_accuracy
+            train_auroc += batch_auroc
             if iteration in ensemble_snapshot_intervals:
                 ensemble_snapshots.append(deepcopy(hypernet.state_dict()))
 
         loss_value /= len(train_loader)
-        train_balanced_accuracy /= len(train_loader)
-        print(f'Epoch: {epoch}, Loss: {loss_value}, Balanced Accuracy: {train_balanced_accuracy}')
+        train_auroc /= len(train_loader)
+        print(f'Epoch: {epoch}, Loss: {loss_value}, AUROC: {train_auroc}')
         loss_per_epoch.append(loss_value)
-        train_balanced_accuracy_per_epoch.append(train_balanced_accuracy)
+        train_auroc_per_epoch.append(train_auroc.detach().to('cpu').item())
 
-        wandb.log({"Train:loss": loss_value, "Train:balanced_accuracy": train_balanced_accuracy, "Learning rate": optimizer.param_groups[0]['lr']})
+        wandb.log({"Train:loss": loss_value, "Train:auroc": train_auroc, "Learning rate": optimizer.param_groups[0]['lr']})
 
     snapshot_models = []
     for snapshot_idx, snapshot in enumerate(ensemble_snapshots):
@@ -283,19 +271,24 @@ def main(args: argparse.Namespace) -> None:
     # from series to list
     y_test = y_test.tolist()
     # threshold the predictions if the model is binary
+
+    if nr_classes == 2:
+        test_auroc = roc_auc_score(y_test, predictions)
+    else:
+        test_auroc = roc_auc_score(y_test, predictions, multi_class="ovo")
+
     if nr_classes == 2:
         predictions = (predictions > 0.5).astype(int)
     else:
         predictions = np.argmax(predictions, axis=1)
 
-    balanced_accuracy = balanced_accuracy_score(y_test, predictions)
     accuracy = accuracy_score(y_test, predictions)
 
-    print("Balanced accuracy: %0.3f" % balanced_accuracy)
+    print("AUROC: %0.3f" % test_auroc)
     print("Accuracy: %0.3f" % accuracy)
 
     wandb.run.summary["Test:accuracy"] = accuracy
-    wandb.run.summary["Test:balanced_accuracy"] = balanced_accuracy
+    wandb.run.summary["Test:auroc"] = test_auroc
     if interpretable:
         weights = np.array(weights)
         weights = np.squeeze(weights)
@@ -332,10 +325,10 @@ def main(args: argparse.Namespace) -> None:
 
     end_time = time.time()
     output_info = {
-        'train_balanced_accuracy': train_balanced_accuracy_per_epoch,
+        'train_auroc': train_auroc_per_epoch,
         'train_loss': loss_per_epoch,
         'test_accuracy': accuracy,
-        'test_balanced_accuracy': balanced_accuracy,
+        'test_auroc': test_auroc,
         'time': end_time - start_time,
     }
 

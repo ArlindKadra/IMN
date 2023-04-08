@@ -4,7 +4,8 @@ import os
 
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import balanced_accuracy_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.utils.class_weight import compute_class_weight
 
 import numpy as np
 import wandb
@@ -44,11 +45,9 @@ def main(args: argparse.Namespace) -> None:
     # the reference to info is not needed anymore
     del info
 
-    total_weight = y_train.shape[0]
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
-    weight_per_class = total_weight / unique_classes.shape[0]
-    weights = (np.ones(unique_classes.shape[0]) * weight_per_class) / class_counts
-
+    class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
+    nr_classes = len(unique_classes)
     wandb.init(
         project='INN',
         config=args,
@@ -61,8 +60,8 @@ def main(args: argparse.Namespace) -> None:
         model = CatBoostClassifier(
             task_type='GPU',
             devices='0',
-            loss_function='MultiClass' if len(unique_classes) > 2 else 'Logloss',
-            class_weights=weights,
+            loss_function='MultiClass' if nr_classes > 2 else 'Logloss',
+            class_weights=class_weights,
             random_seed=seed,
         )
 
@@ -71,14 +70,16 @@ def main(args: argparse.Namespace) -> None:
     else:
         model.fit(X_train, y_train)
 
-    train_predictions = model.predict(X_train)
-    test_predictions = model.predict(X_test)
+    train_predictions_labels = model.predict(X_train)
+    train_predictions_probabilities = model.predict_proba(X_train)[:, 1] if nr_classes == 2 else model.predict_proba(X_train)
+    test_predictions_labels = model.predict(X_test)
+    test_predictions_probabilities = model.predict_proba(X_test)[:, 1] if nr_classes == 2 else model.predict_proba(X_test)
 
     # calculate the balanced accuracy
-    train_balanced_accuracy = balanced_accuracy_score(y_train, train_predictions)
-    train_accuracy = accuracy_score(y_train, train_predictions)
-    test_balanced_accuracy = balanced_accuracy_score(y_test, test_predictions)
-    test_accuracy = accuracy_score(y_test, test_predictions)
+    train_auroc = roc_auc_score(y_train, train_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_train, train_predictions_probabilities, multi_class='ovo')
+    train_accuracy = accuracy_score(y_train, train_predictions_labels)
+    test_auroc = roc_auc_score(y_test, test_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_test, test_predictions_probabilities, multi_class='ovo')
+    test_accuracy = accuracy_score(y_test, test_predictions_labels)
 
     # get random forest feature importances
     feature_importances = model.feature_importances_
@@ -96,18 +97,18 @@ def main(args: argparse.Namespace) -> None:
     print("Top 10 features: %s" % top_10_features)
     print("Top 10 feature importances: %s" % top_10_importances)
 
-    wandb.run.summary["Train:balanced_accuracy"] = train_balanced_accuracy
+    wandb.run.summary["Train:auroc"] = train_auroc
     wandb.run.summary["Train:accuracy"] = train_accuracy
-    wandb.run.summary["Test:balanced_accuracy"] = test_balanced_accuracy
+    wandb.run.summary["Test:auroc"] = test_auroc
     wandb.run.summary["Test:accuracy"] = test_accuracy
     wandb.run.summary["Top_10_features"] = top_10_features
     wandb.run.summary["Top_10_features_weights"] = top_10_importances
 
     output_info = {
-        'train_balanced_accuracy': train_balanced_accuracy,
+        'train_auroc': train_auroc,
         'train_accuracy': train_accuracy,
         'test_accuracy': test_accuracy,
-        'test_balanced_accuracy': test_balanced_accuracy,
+        'test_auroc': test_auroc,
         'top_10_features': top_10_features,
         'top_10_features_weights': top_10_importances,
     }
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=15,
+        default=54,
         help='Dataset id'
     )
     parser.add_argument(
