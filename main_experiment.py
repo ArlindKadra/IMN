@@ -91,7 +91,7 @@ def main(args: argparse.Namespace) -> None:
         print('Could not compile the hypernetwork. Continuing without compilation.')
 
     if nr_classes == 2:
-        y_train = [0.1 if y_train[i] == 0 else 0.9 for i in range(y_train.shape[0])]
+        y_train = [0 if y_train[i] == 0 else 1 for i in range(y_train.shape[0])]
         y_train = np.array(y_train)
 
     X_train = torch.tensor(X_train).float()
@@ -118,7 +118,7 @@ def main(args: argparse.Namespace) -> None:
     scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
     scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
     if nr_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0)
     else:
         criterion = torch.nn.BCEWithLogitsLoss()
 
@@ -389,7 +389,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--augmentation_probability",
         type=float,
-        default=1,
+        default=0.2,
         help="Probability of data augmentation",
     )
     parser.add_argument(
@@ -413,7 +413,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=41143,
+        default=12,
         help='Dataset id',
     )
     parser.add_argument(
@@ -443,7 +443,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--encoding_type',
         type=str,
-        default='one_hot',
+        default='ordinal',
         help='Encoding type',
     )
 

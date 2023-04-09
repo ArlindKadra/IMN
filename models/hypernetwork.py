@@ -24,7 +24,7 @@ class HyperNet(nn.Module):
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
+        self.output_layer = nn.Linear(hidden_size, nr_features * nr_classes)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -48,9 +48,8 @@ class HyperNet(nn.Module):
             x = self.blocks[i](x)
 
         w = self.output_layer(x)
-        # add column of ones to the input variable to account for the intercept
-        input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
-        w = w.view(-1, self.nr_features + 1, self.nr_classes)
+
+        w = w.view(-1, self.nr_features, self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
 
         if return_weights:
