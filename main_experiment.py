@@ -90,6 +90,10 @@ def main(args: argparse.Namespace) -> None:
     except RuntimeError:
         print('Could not compile the hypernetwork. Continuing without compilation.')
 
+    if nr_classes == 2:
+        y_train = [0.1 if y_train[i] == 0 else 0.9 for i in range(y_train.shape[0])]
+        y_train = np.array(y_train)
+
     X_train = torch.tensor(X_train).float()
     y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
     X_train = X_train.to(dev)
@@ -385,7 +389,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--augmentation_probability",
         type=float,
-        default=0.2,
+        default=1,
         help="Probability of data augmentation",
     )
     parser.add_argument(
@@ -409,7 +413,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=41143,
         help='Dataset id',
     )
     parser.add_argument(
@@ -439,7 +443,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--encoding_type',
         type=str,
-        default='ordinal',
+        default='one_hot',
         help='Encoding type',
     )
 
