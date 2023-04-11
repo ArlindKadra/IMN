@@ -6,7 +6,7 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
@@ -260,17 +260,17 @@ def preprocess_dataset(
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
         if encoding_type == "ordinal":
-            categorical_preprocessor = ('categorical', Pipeline([('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1, encoded_missing_value=-1, categories=column_category_values)), ('scaler', StandardScaler())]), categorical_features)
+            categorical_preprocessor = ('low_card_categorical', TargetEncoder(), categorical_features)
         else:
-            categorical_preprocessor = ('categorical', OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values), categorical_features)
+            categorical_preprocessor = ('low_card_categorical', OneHotEncoder(handle_unknown='ignore', sparse=False), categorical_features)
+
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(
         dataset_preprocessors,
         remainder='passthrough',
     )
-    column_transformer.fit(X_train)
-    X_train = column_transformer.transform(X_train)
+    X_train = column_transformer.fit_transform(X_train, y_train)
     X_test = column_transformer.transform(X_test)
     # convert to dataframe and detect dtypes
     # dataframe from numpy array
@@ -289,8 +289,12 @@ def preprocess_dataset(
             new_attribute_names.extend([attribute_names[i] for i in categorical_features])
         else:
             for i in range(len(column_category_values)):
-                new_categorical_indicator.extend([True] * len(column_category_values[i]))
-                new_attribute_names.extend([attribute_names[categorical_features[i]] + '_' + str(category) for category in column_category_values[i]])
+                if len(column_category_values[i]) > 2:
+                    new_categorical_indicator.extend([True] * len(column_category_values[i]))
+                    new_attribute_names.extend([attribute_names[categorical_features[i]] + '_' + str(category) for category in column_category_values[i]])
+                else:
+                    new_categorical_indicator.extend([True])
+                    new_attribute_names.extend([attribute_names[categorical_features[i]]])
 
     X_train = pd.DataFrame(X_train, columns=new_attribute_names)
     X_test = pd.DataFrame(X_test, columns=new_attribute_names)

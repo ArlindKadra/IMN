@@ -65,6 +65,8 @@ def distribution_methods(output_dir: str, method_names: list):
 
 def rank_methods(output_dir: str, method_names: list):
 
+    inn_wins = 0
+    catboost_wins = 0
     pretty_method_names = {
         'inn': 'INN',
         'inn_v2': 'INN 2',
@@ -103,6 +105,7 @@ def rank_methods(output_dir: str, method_names: list):
         for rank_index, rank in enumerate(ranks):
             method_ranks[method_names[rank_index - 1]].append(ranks[rank_index])
 
+
     # print mean rank for every method
     for method_name in method_names:
         print(f'{method_name}: {np.median(method_ranks[method_name])}')
@@ -131,4 +134,4 @@ result_directory = os.path.expanduser(
 method_names = ['inn', 'catboost']
 rank_methods(result_directory, method_names)
 #distribution_methods(result_directory, method_names)
-analyze_results(result_directory, [])
+#analyze_results(result_directory, [])

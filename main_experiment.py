@@ -109,7 +109,7 @@ def main(args: argparse.Namespace) -> None:
 
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
-    optimizer = torch.optim.AdamW(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = torch.optim.Adam(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
 
     def warmup(current_step: int):
@@ -118,7 +118,7 @@ def main(args: argparse.Namespace) -> None:
     scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
     scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
     if nr_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0)
+        criterion = torch.nn.CrossEntropyLoss()
     else:
         criterion = torch.nn.BCEWithLogitsLoss()
 
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.01,
+        default=0.0001,
         help="Weight decay",
     )
     parser.add_argument(
@@ -407,13 +407,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',
         type=int,
-        default=11,
+        default=1,
         help='Random seed',
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=12,
+        default=31,
         help='Dataset id',
     )
     parser.add_argument(
