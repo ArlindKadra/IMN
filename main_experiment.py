@@ -9,13 +9,11 @@ from sklearn.utils.class_weight import compute_class_weight
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import torch
-import pandas as pd
 import numpy as np
 import wandb
 
 from models.hypernetwork import HyperNet
 from utils import augment_data, get_dataset
-
 
 def main(args: argparse.Namespace) -> None:
 
@@ -94,8 +92,39 @@ def main(args: argparse.Namespace) -> None:
         y_train = [0 if y_train[i] == 0 else 1 for i in range(y_train.shape[0])]
         y_train = np.array(y_train)
 
-    X_train = torch.tensor(X_train).float()
-    y_train = torch.tensor(y_train).float() if nr_classes == 2 else torch.tensor(y_train).long()
+    # separate into classes
+    dataset_classes = {}
+    for i in range(nr_classes):
+        dataset_classes[i] = []
+
+    for index, label in enumerate(y_train):
+        dataset_classes[label].append(index)
+
+    majority_class_nr = -1
+    for i in range(nr_classes):
+        if len(dataset_classes[i]) > majority_class_nr:
+            majority_class_nr = len(dataset_classes[i])
+
+
+    examples_train = []
+    labels_train = []
+
+    for i in range(nr_classes):
+        nr_instances_class = len(dataset_classes[i])
+        if nr_instances_class < majority_class_nr:
+            # oversample
+            oversampled_indices = np.random.choice(dataset_classes[i], majority_class_nr - nr_instances_class, replace=True)
+            examples_train.extend(X_train[dataset_classes[i]])
+            labels_train.extend(y_train[dataset_classes[i]])
+            for index in oversampled_indices:
+                examples_train.append(X_train[index])
+                labels_train.append(y_train[index])
+        else:
+            examples_train.extend(X_train[dataset_classes[i]])
+            labels_train.extend(y_train[dataset_classes[i]])
+
+    X_train = torch.tensor(np.array(examples_train)).float()
+    y_train = torch.tensor(np.array(labels_train)).float() if nr_classes == 2 else torch.tensor(np.array(labels_train)).long()
     X_train = X_train.to(dev)
     y_train = y_train.to(dev)
     # Create dataloader for training
@@ -104,9 +133,7 @@ def main(args: argparse.Namespace) -> None:
         y_train,
     )
 
-    sampler = torch.utils.data.sampler.WeightedRandomSampler(instance_weights, X_train.size(0), replacement=True)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=sampler)
-
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     T_0: int = max(((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
     # Train the hypernetwork
     optimizer = torch.optim.Adam(hypernet.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -389,7 +416,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--augmentation_probability",
         type=float,
-        default=0.2,
+        default=0,
         help="Probability of data augmentation",
     )
     parser.add_argument(
@@ -407,13 +434,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',
         type=int,
-        default=1,
+        default=0,
         help='Random seed',
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=3,
         help='Dataset id',
     )
     parser.add_argument(

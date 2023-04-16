@@ -216,6 +216,9 @@ def preprocess_dataset(
         if X[column_name].isnull().sum() > len(X[column_name]) * 0.9:
             dropped_column_names.append(column_name)
             dropped_column_indices.append(column_index)
+        if X[column_name].nunique() == 1:
+            dropped_column_names.append(column_name)
+            dropped_column_indices.append(column_index)
 
     for column_index, column_name in enumerate(X.keys()):
         if X[column_name].dtype == 'object' or X[column_name].dtype == 'category' or X[column_name].dtype == 'string':
@@ -242,6 +245,15 @@ def preprocess_dataset(
         stratify=y,
     )
 
+    # pandas series number of unique values
+    nr_classes = y_train.nunique()
+
+    # scikit learn label encoder
+    label_encoder = LabelEncoder()
+    label_encoder.fit(y_train)
+    y_train = label_encoder.transform(y_train)
+    y_test = label_encoder.transform(y_test)
+
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
     categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
 
@@ -259,10 +271,18 @@ def preprocess_dataset(
         numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
-        if encoding_type == "ordinal":
-            categorical_preprocessor = ('low_card_categorical', TargetEncoder(), categorical_features)
+        if nr_classes > 2:
+            categorical_preprocessor = (
+                'categorical_encoder',
+                OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values, drop='if_binary'),
+                categorical_features,
+            )
         else:
-            categorical_preprocessor = ('low_card_categorical', OneHotEncoder(handle_unknown='ignore', sparse=False), categorical_features)
+            categorical_preprocessor = (
+                'categorical_encoder',
+                TargetEncoder(random_state=seed),
+                categorical_features,
+            )
 
         dataset_preprocessors.append(categorical_preprocessor)
 
@@ -284,12 +304,13 @@ def preprocess_dataset(
         new_attribute_names = []
 
     if len(categorical_features) > 0:
-        if encoding_type == "ordinal":
+        if nr_classes == 2:
             new_categorical_indicator.extend([True] * len(categorical_features))
             new_attribute_names.extend([attribute_names[i] for i in categorical_features])
         else:
             for i in range(len(column_category_values)):
-                if len(column_category_values[i]) > 2:
+                nr_unique_categories = len(column_category_values[i])
+                if nr_unique_categories > 2:
                     new_categorical_indicator.extend([True] * len(column_category_values[i]))
                     new_attribute_names.extend([attribute_names[categorical_features[i]] + '_' + str(category) for category in column_category_values[i]])
                 else:
@@ -311,14 +332,14 @@ def preprocess_dataset(
         else:
             # categorical variables where not encoded
             if not encode_categorical:
-                X_train[column_name] = X_train[column_name].fillna('missing')
-                X_test[column_name] = X_test[column_name].fillna('missing')
 
-    # scikit learn label encoder
-    label_encoder = LabelEncoder()
-    label_encoder.fit(y_train)
-    y_train = label_encoder.transform(y_train)
-    y_test = label_encoder.transform(y_test)
+                X_train[column_name] = X_train[column_name].cat.add_categories('missing')
+                X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
+                X_train[column_name] = X_train[column_name].fillna('missing')
+
+                X_test[column_name] = X_test[column_name].cat.add_categories('missing')
+                X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
+                X_test[column_name] = X_test[column_name].fillna('missing')
 
     info_dict = {
         'X_train': X_train,
