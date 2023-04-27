@@ -33,8 +33,8 @@ def prepare_method_results(output_dir:str, method_name: str):
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
         result_dict['dataset_id'].append(dataset_id)
-        result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy))
-        result_dict['test_auroc'].append(np.mean(seed_test_balanced_accuracy))
+        result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
+        result_dict['test_auroc'].append(np.mean(seed_test_balanced_accuracy) if len(seed_test_balanced_accuracy) > 0 else np.NAN)
 
     return pd.DataFrame.from_dict(result_dict)
 
@@ -57,6 +57,7 @@ def distribution_methods(output_dir: str, method_names: list):
     # prepare distribution plot
     df = pd.DataFrame()
     for method_name, method_result in zip(method_names, method_results):
+        print(method_result)
         df = df.append(method_result.assign(method=method_name))
 
     df['train_auroc'] = df['train_auroc'].fillna(0)
@@ -134,7 +135,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['catboost', 'random_forest']
+method_names = ['inn', 'catboost', 'random_forest']
 rank_methods(result_directory, method_names)
 #distribution_methods(result_directory, method_names)
 #analyze_results(result_directory, [])

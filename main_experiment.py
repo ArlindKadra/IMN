@@ -361,7 +361,7 @@ def main(args: argparse.Namespace) -> None:
 
     if interpretable:
         output_info['top_10_features'] = top_10_features
-        output_info['top_10_features_weights'] = weights[sorted_idx[:10]].tolist()
+        output_info['top_10_features_weights'] = weights_importances[sorted_idx[:10]].tolist()
 
     output_directory = os.path.join(args.output_dir, 'inn' if interpretable else 'tabresnet', f'{dataset_id}', f'{seed}')
     os.makedirs(output_directory, exist_ok=True)
