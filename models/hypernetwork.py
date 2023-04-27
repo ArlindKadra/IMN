@@ -20,11 +20,12 @@ class HyperNet(nn.Module):
         self.nr_features = nr_features
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
+        self.second_head = nn.Linear(hidden_size, nr_classes)
 
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.output_layer = nn.Linear(hidden_size, nr_features * nr_classes)
+        self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -49,7 +50,8 @@ class HyperNet(nn.Module):
 
         w = self.output_layer(x)
 
-        w = w.view(-1, self.nr_features, self.nr_classes)
+        input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
+        w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
 
         if return_weights:

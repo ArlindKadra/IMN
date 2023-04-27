@@ -7,18 +7,15 @@ class TabResNet(nn.Module):
             self,
             nr_features: int = 32,
             nr_classes: int = 10,
-            nr_blocks: int = 0,
+            nr_blocks: int = 2,
             hidden_size: int = 64,
-            dropout_rate: float = 0.6,
             **kwargs,
     ):
         super(TabResNet, self).__init__()
         self.nr_blocks = nr_blocks
-        self.hidden_size = max(256, int(nr_features / 2))
+        self.hidden_size = hidden_size
         self.blocks = nn.ModuleList()
-        self.dropout_rate = dropout_rate
         self.batch_norm = nn.BatchNorm1d(self.hidden_size)
-        self.dropout = nn.Dropout(self.dropout_rate)
         self.act_func = torch.nn.GELU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
@@ -63,7 +60,6 @@ class TabResNet(nn.Module):
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
             self.gelu = nn.GELU()
-            self.dropout = nn.Dropout(0.2)
             self.linear2 = nn.Linear(output_features, output_features)
             self.bn2 = nn.BatchNorm1d(output_features)
 

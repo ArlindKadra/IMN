@@ -59,6 +59,8 @@ def distribution_methods(output_dir: str, method_names: list):
     for method_name, method_result in zip(method_names, method_results):
         df = df.append(method_result.assign(method=method_name))
 
+    df['train_auroc'] = df['train_auroc'].fillna(0)
+    df['test_auroc'] = df['test_auroc'].fillna(0)
     plt.boxplot([df[df['method'] == method_name]['test_auroc'] for method_name in method_names])
     plt.xticks(range(1, len(method_names) + 1), pretty_names)
     plt.ylabel('Test AUROC')
@@ -132,7 +134,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'catboost']
+method_names = ['catboost', 'random_forest']
 rank_methods(result_directory, method_names)
 #distribution_methods(result_directory, method_names)
 #analyze_results(result_directory, [])

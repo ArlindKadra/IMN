@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from scipy.stats import rankdata
 
 
 def prepare_data_for_cutmix(
@@ -373,3 +374,21 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorica
     )
     info_dict['dataset_name'] = dataset_name
     return info_dict
+
+def generate_weight_importances_top_k(weights: np.ndarray, k: int = 2) -> np.ndarray:
+
+    weight_counts = [0 for _ in range(weights.shape[1])]
+    absolute_weights = np.abs(weights)
+    number_weights = weights.shape[1]
+    if k > number_weights:
+        k = int(number_weights / 2)
+    for example_idx in range(absolute_weights.shape[0]):
+        example_weights = absolute_weights[example_idx, :]
+        example_weight_ranks = rankdata(example_weights, method='min')
+        for weight_example_index in range(number_weights):
+            if example_weight_ranks[weight_example_index] > number_weights - k:
+                weight_counts[weight_example_index] += 1
+    weight_counts = np.array(weight_counts)
+    weight_importances = weight_counts / sum(weight_counts)
+
+    return weight_importances

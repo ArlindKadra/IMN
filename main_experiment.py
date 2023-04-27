@@ -7,6 +7,7 @@ import time
 from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score
 from sklearn.utils.class_weight import compute_class_weight
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
+from utils import generate_weight_importances_top_k
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import torch
 import numpy as np
@@ -105,7 +106,6 @@ def main(args: argparse.Namespace) -> None:
         if len(dataset_classes[i]) > majority_class_nr:
             majority_class_nr = len(dataset_classes[i])
 
-
     examples_train = []
     labels_train = []
 
@@ -158,7 +158,7 @@ def main(args: argparse.Namespace) -> None:
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
-    weight_norm = 0.1 / (batch_size * (nr_classes if nr_classes > 2 else 1))
+    weight_norm = 0.01 / (batch_size * nr_features * (nr_classes if nr_classes > 2 else 1))
     train_auroc_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
@@ -202,8 +202,8 @@ def main(args: argparse.Namespace) -> None:
                 if nr_classes == 2:
                     output = output.squeeze(1)
                     output_adv = output_adv.squeeze(1)
-                main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
 
+                main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
             if interpretable:
                 """
                 weights = torch.abs(weights)
@@ -225,7 +225,8 @@ def main(args: argparse.Namespace) -> None:
                 else:
                     weights = torch.squeeze(weights, dim=2)
 
-                l1_loss = torch.norm(weights, 1)
+                weights = torch.abs(weights)
+                l1_loss = torch.mean(weights)
                 """
                 if specify_weight_norm:
                     
@@ -339,20 +340,16 @@ def main(args: argparse.Namespace) -> None:
         weights = np.array(selected_weights)
         weights = weights[:, :-1]
 
-        # sum the weights over all test examples
-        weights = np.sum(weights, axis=0)
-
-        # normalize the weights
-        weights = weights / np.sum(weights)
+        weights_importances = generate_weight_importances_top_k(weights, 5)
 
         # print attribute name and weight for the top 10 features
-        sorted_idx = np.argsort(weights)[::-1]
+        sorted_idx = np.argsort(weights_importances)[::-1]
         top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
         print("Top 10 features: %s" % top_10_features)
         # print the weights of the top 10 features
-        print(weights[sorted_idx[:10]])
+        print(weights_importances[sorted_idx[:10]])
         wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = weights[sorted_idx[:10]]
+        wandb.run.summary["Top_10_features_weights"] = weights_importances[sorted_idx[:10]]
 
     end_time = time.time()
     output_info = {
@@ -440,7 +437,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=3,
+        default=23517,
         help='Dataset id',
     )
     parser.add_argument(

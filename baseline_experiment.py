@@ -4,6 +4,8 @@ import os
 
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.utils.class_weight import compute_class_weight
 
@@ -64,6 +66,10 @@ def main(args: argparse.Namespace) -> None:
             class_weights=class_weights,
             random_seed=seed,
         )
+    elif args.model_name == 'decision_tree':
+        model = DecisionTreeClassifier(random_state=seed)
+    elif args.model_name == 'logistic_regression':
+        model = LogisticRegression(random_state=seed, class_weight='balanced', multi_class='multinomial' if nr_classes > 2 else 'ovr')
 
     if args.model_name == 'catboost':
         model.fit(X_train, y_train, cat_features=categorical_indices)
