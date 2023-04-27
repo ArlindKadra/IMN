@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import time
 
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -57,7 +58,7 @@ def main(args: argparse.Namespace) -> None:
         config=args,
     )
     wandb.config['dataset_name'] = dataset_name
-
+    start_time = time.time()
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
     elif args.model_name == 'catboost':
@@ -121,6 +122,7 @@ def main(args: argparse.Namespace) -> None:
     wandb.run.summary["Top_10_features"] = top_10_features
     wandb.run.summary["Top_10_features_weights"] = top_10_importances
 
+    end_time = time.time()
     output_info = {
         'train_auroc': train_auroc,
         'train_accuracy': train_accuracy,
@@ -128,6 +130,7 @@ def main(args: argparse.Namespace) -> None:
         'test_auroc': test_auroc,
         'top_10_features': top_10_features,
         'top_10_features_weights': top_10_importances,
+        'time': end_time - start_time,
     }
 
     output_directory = os.path.join(args.output_dir, f'{args.model_name}', f'{dataset_id}', f'{seed}')
@@ -152,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=1590,
         help='Dataset id'
     )
     parser.add_argument(
