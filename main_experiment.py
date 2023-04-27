@@ -63,7 +63,6 @@ def main(args: argparse.Namespace) -> None:
     nr_classes = len(unique_classes)
 
     class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
-    instance_weights = [class_weights[y_train[i]] for i in range(y_train.shape[0])]
 
     network_configuration = {
         'nr_features': nr_features,
@@ -158,7 +157,7 @@ def main(args: argparse.Namespace) -> None:
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
-    weight_norm = 0.01 / (batch_size * nr_features * (nr_classes if nr_classes > 2 else 1))
+    weight_norm = 0.1 / (batch_size * nr_features * (nr_classes if nr_classes > 2 else 1))
     train_auroc_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
@@ -437,7 +436,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=23517,
+        default=1489,
         help='Dataset id',
     )
     parser.add_argument(
