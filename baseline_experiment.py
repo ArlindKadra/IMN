@@ -26,6 +26,8 @@ def main(args: argparse.Namespace) -> None:
     encode_categorical_variables = {
         'random_forest': True,
         'catboost': False,
+        'decision_tree': True,
+        'logistic_regression': True,
     }
 
     info = get_dataset(
@@ -87,8 +89,17 @@ def main(args: argparse.Namespace) -> None:
     test_auroc = roc_auc_score(y_test, test_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_test, test_predictions_probabilities, multi_class='ovo')
     test_accuracy = accuracy_score(y_test, test_predictions_labels)
 
-    # get random forest feature importances
-    feature_importances = model.feature_importances_
+    if args.model_name == 'logistic_regression':
+        # get the feature importances
+        feature_importances = model.coef_
+        if nr_classes > 2:
+            feature_importances = np.mean(np.abs(feature_importances), axis=0)
+        feature_importances = np.squeeze(feature_importances)
+        feature_importances = feature_importances / np.sum(feature_importances)
+
+    else:
+        # get the feature importances
+        feature_importances = model.feature_importances_
     # sort the feature importances in descending order
     sorted_idx = np.argsort(feature_importances)[::-1]
 
@@ -141,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=54,
+        default=31,
         help='Dataset id'
     )
     parser.add_argument(
@@ -153,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--model_name',
         type=str,
-        default='catboost',
+        default='logistic_regression',
         help='The name of the baseline model to use',
     )
     parser.add_argument(
