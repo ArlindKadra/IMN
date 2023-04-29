@@ -33,8 +33,8 @@ def prepare_method_results(output_dir:str, method_name: str):
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
         result_dict['dataset_id'].append(dataset_id)
-        result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
-        result_dict['test_auroc'].append(np.mean(seed_test_balanced_accuracy) if len(seed_test_balanced_accuracy) > 0 else np.NAN)
+        result_dict['train_auroc'].append(seed_train_balanced_accuracy[0] if len(seed_train_balanced_accuracy) > 0 else np.NAN)
+        result_dict['test_auroc'].append(seed_test_balanced_accuracy[0] if len(seed_test_balanced_accuracy) > 0 else np.NAN)
 
     return pd.DataFrame.from_dict(result_dict)
 
@@ -47,6 +47,8 @@ def distribution_methods(output_dir: str, method_names: list):
         'random_forest': 'Random Forest',
         'catboost': 'CatBoost',
         'tabresnet': 'TabResNet',
+        'decision_tree': 'Decision Tree',
+        'logistic_regression': 'Logistic Regression',
     }
     method_results = []
     for method_name in method_names:
@@ -77,6 +79,8 @@ def rank_methods(output_dir: str, method_names: list):
         'random_forest': 'Random Forest',
         'catboost': 'CatBoost',
         'tabresnet': 'TabResNet',
+        'decision_tree': 'Decision Tree',
+        'logistic_regression': 'Logistic Regression',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -112,7 +116,7 @@ def rank_methods(output_dir: str, method_names: list):
 
     # print mean rank for every method
     for method_name in method_names:
-        print(f'{method_name}: {np.median(method_ranks[method_name])}')
+        print(f'{method_name}: {np.mean(method_ranks[method_name])}')
 
     # prepare distribution plot
     sns.violinplot(data=[method_ranks[method_name] for method_name in method_names])
@@ -135,7 +139,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'catboost', 'random_forest']
-rank_methods(result_directory, method_names)
-#distribution_methods(result_directory, method_names)
+method_names = ['decision_tree', 'inn', 'logistic_regression']
+#rank_methods(result_directory, method_names)
+distribution_methods(result_directory, method_names)
 #analyze_results(result_directory, [])

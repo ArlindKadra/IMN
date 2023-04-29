@@ -140,7 +140,7 @@ nr_epochs = 100
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs)
 hypernet.train()
 specify_weight_norm = True
-weight_norm = 0.0000001
+weight_norm = 0
 for epoch in range(nr_epochs):
     epoch_loss = 0
     epoch_auroc = 0
@@ -323,7 +323,7 @@ X_train_base = copy.deepcopy(X_train)
 y_train = torch.tensor(y_train, dtype=torch.float32).to('cuda')
 y_test = torch.tensor(y_test, dtype=torch.float32).to('cuda')
 
-weight_norm = 0.00001
+weight_norm = 0
 first_feature_importances = []
 second_feature_importances = []
 for number_rfeatures in nr_random_features:
@@ -409,8 +409,8 @@ for number_rfeatures in nr_random_features:
         weights = weights[:, :-1]
         weights = weights.detach().to('cpu').numpy()
         weight_importances = generate_weight_importances_top_k(weights, 2)
-        first_feature_importances.append(weight_importances[0] / sum(weight_importances))
-        second_feature_importances.append(weight_importances[1] / sum(weight_importances))
+        first_feature_importances.append(weight_importances[0])
+        second_feature_importances.append(weight_importances[1])
         print(f'First feature importance: {first_feature_importances}')
         print(f'Second feature importance: {second_feature_importances}')
 
@@ -418,10 +418,10 @@ ax[0, 2].plot(nr_random_features, first_feature_importances, color='blue')
 ax[0, 2].plot(nr_random_features, second_feature_importances, color='red')
 ax[0, 2].set_title('Noise Resilience')
 ax[0, 2].set_xlabel('Nr. of Random Features')
-ax[0, 2].set_ylabel('$|\hat{w}|$')
+#ax[0, 2].set_ylabel('$|\hat{w}|$')
 ax[0, 2].set_xticks(nr_random_features)
-ax[0, 2].text(5, 0.475, r"$x_2$", fontsize=27, color='red')
-ax[0, 2].text(5, 0.44, r"$x_1$", fontsize=27, color='blue')
+ax[0, 2].text(4, 0.475, r"$|\hat{w}\left(x_2\right)|$", fontsize=23, color='red')
+ax[0, 2].text(4, 0.44, r"$|\hat{w}\left(x_1\right)|$", fontsize=23, color='blue')
 fig.subplots_adjust(wspace=0.55)
 legend_without_duplicate_labels(fig)
 #plt.plot(first_feature, y, label='Global hyperplane', color='green')

@@ -76,6 +76,8 @@ def main(args: argparse.Namespace) -> None:
         config=args,
     )
     wandb.config['dataset_name'] = dataset_name
+    weight_norm = args.weight_norm
+    wandb.config['weight_norm'] = weight_norm
     interpretable = args.interpretable
     wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
 
@@ -157,7 +159,8 @@ def main(args: argparse.Namespace) -> None:
     sigmoid_act_func = torch.nn.Sigmoid()
     softmax_act_func = torch.nn.Softmax(dim=1)
     loss_per_epoch = []
-    weight_norm = 0.1 / (batch_size * nr_features * (nr_classes if nr_classes > 2 else 1))
+
+    wandb.config['dataset_name'] = dataset_name
     train_auroc_per_epoch = []
     for epoch in range(1, nr_epochs + 1):
 
@@ -225,15 +228,7 @@ def main(args: argparse.Namespace) -> None:
                     weights = torch.squeeze(weights, dim=2)
 
                 weights = torch.abs(weights)
-                l1_loss = torch.mean(weights)
-                """
-                if specify_weight_norm:
-                    
-                    while (weight_norm * l1_loss) > main_loss:
-                        weight_norm = weight_norm / 10
-                        print(f'Weight norm: {weight_norm}')
-                        specify_weight_norm = False
-                """
+                l1_loss = torch.mean(torch.flatten(weights))
                 loss = main_loss + (weight_norm * l1_loss)
             else:
                 loss = main_loss
@@ -418,7 +413,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.0001,
+        default=0,
+        help="Weight decay",
+    )
+    parser.add_argument(
+        "--weight_norm",
+        type=float,
+        default=0.1,
         help="Weight decay",
     )
     parser.add_argument(
@@ -436,7 +437,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=1489,
         help='Dataset id',
     )
     parser.add_argument(
