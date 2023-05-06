@@ -1,9 +1,11 @@
 import shap
+import argparse
 import numpy as np
 from xaibench.custom_explainers import GroundTruthShap
 from tqdm import tqdm
 import logging
 from sklearn.metrics import accuracy_score, mean_squared_error
+from models.model import Classifier
 
 
 class DatasetAsModel():
@@ -18,8 +20,9 @@ class DatasetAsModel():
 
 class Experiment:
     def __init__(
-        self, dataset, models, explainers, metrics
+        self, dataset, models, explainers, metrics, args
     ):
+        self.args = args
         self.dataset = dataset
         self.dataset.data[0].fillna(0, inplace=True)
         self.dataset.val_data[0].fillna(0, inplace=True)
@@ -43,9 +46,42 @@ class Experiment:
                 self.models[idx] = DatasetAsModel(self.dataset.data_class)
                 self.trained_models.append(DatasetAsModel(self.dataset.data_class))
             else:
-                if not model.deep_learning:
-                    self.trained_models.append(model.train(X, y.ravel()))
+                if self.args.mode == "classification":
+                    unique_classes, class_counts = np.unique(y, axis=0, return_counts=True)
+                    nr_classes = len(unique_classes)
                 else:
+                    nr_classes = 1
+                network_configuration = {
+                    'nr_features': X.shape[1],
+                    'nr_classes': nr_classes,
+                    'nr_blocks': 2,
+                    'hidden_size': 128,
+                }
+                categorical_indicator = [False] * X.shape[1]
+                attribute_names = [str(i) for i in range(X.shape[1])]
+                interpretable = False
+                output_directory = '.'
+                import torch
+                dev = torch.device(
+                    'cuda') if torch.cuda.is_available() else torch.device('cpu')
+                import wandb
+                wandb.init(
+                    project='INN',
+                    config=self.args,
+                )
+                model = Classifier(
+                    network_configuration,
+                    args=self.args,
+                    categorical_indicator=categorical_indicator,
+                    attribute_names=attribute_names,
+                    model_name='inn' if interpretable else 'tabresnet',
+                    device=dev,
+                    output_directory=output_directory,
+                    mode=self.args.mode,
+                )
+                #self.trained_models.append(model.train(X, y.ravel()))
+                y = y.ravel()
+                self.trained_models.append(model.fit(X, y.ravel()))
 
         return self.trained_models
 
@@ -105,6 +141,9 @@ class Experiment:
         if mode == "regression":
             train_X, test_X = self.dataset.data[0], self.dataset.val_data[0]
             train_y, test_y = self.dataset.data[1], self.dataset.val_data[1]
+            train_X = train_X.to_numpy()
+            test_X = test_X.to_numpy()
+            pred = model.predict(train_X)
             train_score, test_score = mean_squared_error(model.predict(train_X), train_y), mean_squared_error(model.predict(test_X), test_y)
         else:
             train_X, test_X = self.dataset.data[0], self.dataset.val_data[0]

@@ -10,7 +10,7 @@ valid_explainers = {
     "maple": custom_explainers.Maple,
     "l2x": custom_explainers.L2X,
     "breakdown": custom_explainers.BreakDown,
-    "inn": custom_explainers.Inter,
+    #"inn": custom_explainers.Inter,
 }
 
 

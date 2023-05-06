@@ -193,7 +193,7 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'decision_tree', 'logistic_regression']
+method_names = ['inn', 'catboost', 'random_forest', 'tabresnet']
 rank_methods(result_directory, method_names)
 prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])

@@ -4,7 +4,7 @@ import time
 
 import torch
 import numpy as np
-
+import pandas as pd
 from models.hypernetwork import HyperNet
 from models.tabresnet import TabResNet
 
@@ -55,6 +55,9 @@ class Classifier():
 
     def fit(self, X, y):
 
+        # check if X_test is a DataFrame
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
         nr_epochs = self.args.nr_epochs
         batch_size = self.args.batch_size
         learning_rate = self.args.learning_rate
@@ -195,8 +198,13 @@ class Classifier():
 
             torch.save(self.model.state_dict(), os.path.join(self.output_directory, 'model.pt'))
 
-    def predict(self, X_test, y_test):
+        return self
 
+    def predict(self, X_test, y_test=None):
+
+        # check if X_test is a DataFrame
+        if isinstance(X_test, pd.DataFrame):
+            X_test = X_test.to_numpy()
         X_test = torch.tensor(X_test).float()
         X_test = X_test.to(self.dev)
 
@@ -251,8 +259,7 @@ class Classifier():
 
             weights_importances = generate_weight_importances_top_k(weights, 5)
 
-            if self.interpretable:
-                return predictions, weights_importances
-            else:
-                return predictions
-
+        if self.interpretable:
+            return predictions, weights_importances
+        else:
+            return predictions

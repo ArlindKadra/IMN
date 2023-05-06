@@ -6,7 +6,7 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from scipy.stats import rankdata
@@ -272,6 +272,12 @@ def preprocess_dataset(
         numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
+        categorical_preprocessor = (
+            'categorical_encoder',
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, encoded_missing_value=-1, categories=column_category_values),
+            categorical_features,
+        )
+        """
         if nr_classes > 2:
             categorical_preprocessor = (
                 'categorical_encoder',
@@ -284,7 +290,7 @@ def preprocess_dataset(
                 TargetEncoder(random_state=seed),
                 categorical_features,
             )
-
+        """
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(
@@ -305,6 +311,9 @@ def preprocess_dataset(
         new_attribute_names = []
 
     if len(categorical_features) > 0:
+        new_categorical_indicator.extend([True] * len(categorical_features))
+        new_attribute_names.extend([attribute_names[i] for i in categorical_features])
+        """
         if nr_classes == 2:
             new_categorical_indicator.extend([True] * len(categorical_features))
             new_attribute_names.extend([attribute_names[i] for i in categorical_features])
@@ -317,7 +326,7 @@ def preprocess_dataset(
                 else:
                     new_categorical_indicator.extend([True])
                     new_attribute_names.extend([attribute_names[categorical_features[i]]])
-
+        """
     X_train = pd.DataFrame(X_train, columns=new_attribute_names)
     X_test = pd.DataFrame(X_test, columns=new_attribute_names)
 

@@ -99,6 +99,96 @@ def get_args():
         type=str,
         help="Path to save results in csv files.",
     )
+    parser.add_argument(
+        "--nr_blocks",
+        type=int,
+        default=2,
+        help="Number of levels in the hypernetwork",
+    )
+    parser.add_argument(
+        "--hidden_size",
+        type=int,
+        default=128,
+        help="Number of hidden units in the hypernetwork",
+    )
+    parser.add_argument(
+        "--nr_epochs",
+        type=int,
+        default=100,
+        help="Number of epochs",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=64,
+        help="Batch size",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.01,
+        help="Learning rate",
+    )
+    parser.add_argument(
+        "--augmentation_probability",
+        type=float,
+        default=0,
+        help="Probability of data augmentation",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.01,
+        help="Weight decay",
+    )
+    parser.add_argument(
+        "--weight_norm",
+        type=float,
+        default=0.1,
+        help="Weight decay",
+    )
+    parser.add_argument(
+        "--scheduler_t_mult",
+        type=int,
+        default=2,
+        help="Multiplier for the scheduler",
+    )
+    parser.add_argument(
+        '--dataset_id',
+        type=int,
+        default=41143,
+        help='Dataset id',
+    )
+    parser.add_argument(
+        '--test_split_size',
+        type=float,
+        default=0.2,
+        help='Test size',
+    )
+    parser.add_argument(
+        '--nr_restarts',
+        type=int,
+        default=3,
+        help='Number of learning rate restarts',
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        default='.',
+        help='Directory to save the results',
+    )
+    parser.add_argument(
+        '--interpretable',
+        action='store_true',
+        default=False,
+        help='Whether to use interpretable models',
+    )
+    parser.add_argument(
+        '--encoding_type',
+        type=str,
+        default='ordinal',
+        help='Encoding type',
+    )
     args = parser.parse_args()
     if args.data_kwargs_json:
         args.data_kwargs = commentjson.load(open(args.data_kwargs_json))
@@ -107,7 +197,6 @@ def get_args():
     if args.experiment_json:
         args.experiment_json = commentjson.load(open(args.experiment_json))
     return args
-
 
 def process_args(args):
     if args.experiment_json:
@@ -137,13 +226,13 @@ def process_args(args):
             explainer.Explainer(expl["name"], **expl["expl_kwargs"]) for expl in args.experiment_json["explainers"]
         ]
         metrics = [metric.Metric(metr, **metric_kwargs) for metr in args.experiment_json["metrics"]]
-        return experiments.Experiment(dataset, models, explainers, metrics)
+        return experiments.Experiment(dataset, models, explainers, metrics, args)
 
     dataset = datasets.Data(args.dataset, args.mode, **args.data_kwargs)
     models = model.Model(args.model, args.mode, **args.model_kwargs)
     explainers = explainer.Explainer(args.explainer)
     metrics = metric.Metric(args.metric)
-    return experiments.Experiment(dataset, [models], [explainers], [metrics])
+    return experiments.Experiment(dataset, [models], [explainers], [metrics], args)
 
 
 if __name__ == "__main__":

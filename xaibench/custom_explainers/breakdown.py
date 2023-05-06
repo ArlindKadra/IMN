@@ -80,7 +80,7 @@ class BreakDown:
 
         baseline_yhat = np.mean(self.clf.predict(data))
 
-        open_variables = list(range(0,data.shape[1]))
+        open_variables = [i for i in range(0, data.shape[1])]
         important_variables = deque()
         important_yhats = {}
 
@@ -112,7 +112,7 @@ class BreakDown:
 
         target_yhat = self.clf.predict(observation)
 
-        open_variables = list(range(0,data.shape[1]))
+        open_variables = [i for i in range(0, data.shape[1])]
         important_variables = deque()
         important_yhats = {}
 
@@ -136,7 +136,8 @@ class BreakDown:
         var_names = np.array(self.colnames)[important_variables]
         var_values = observation[0,important_variables]
         means = self._get_means_from_yhats(important_yhats)
-        means.appendleft(target_yhat[0])
+
+        means.appendleft(target_yhat.item())
         means.reverse()
         contributions = np.diff(means)
         

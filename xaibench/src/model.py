@@ -1,7 +1,7 @@
 from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-from models.tabresnet import TabResNet
+from models.model import Classifier
 
 valid_models = {
     "regression": {
@@ -9,14 +9,14 @@ valid_models = {
         "lr": LinearRegression,
         "mlp": MLPRegressor,
         "dtree": DecisionTreeRegressor,
-        "tabresnet": TabResNet,
+        "tabresnet": Classifier,
     },
     "classification": {
         "dataset": lambda : "dataset",
         "lr": LinearRegression,
         "mlp": MLPClassifier,
         "dtree": DecisionTreeClassifier,
-        "tabresnet": TabResNet,
+        "tabresnet": Classifier,
     },
 }
 
@@ -30,8 +30,7 @@ class Model:
         self.name = name
         self.mode = mode
         self.model = valid_models[mode][name](**kwargs)
-        if name == "tabresnet":
-            self.deep_learning = True
+
         if self.model == "dataset":
             return
         self.predict = self.model.predict

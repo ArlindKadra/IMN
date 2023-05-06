@@ -36,7 +36,7 @@ class LimeTabular:
         self.explainer = lime.lime_tabular.LimeTabularExplainer(data, mode=mode, kernel_width=kernel_width * np.sqrt(data.shape[-1]))
 
         out = self.model(data[0:1])
-        if len(out.shape) == 1:
+        if len(out.shape) <= 1:
             self.out_dim = 1
             self.flat_out = True
             if mode == "classification":
