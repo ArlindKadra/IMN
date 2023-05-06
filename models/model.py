@@ -13,7 +13,6 @@ from utils import augment_data, generate_weight_importances_top_k
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import torch
 import numpy as np
-
 import wandb
 
 class Classifier():
@@ -28,9 +27,11 @@ class Classifier():
             device='cpu',
             mode='classification',
             output_directory='.',
+            disable_wandb=True,
     ):
         super(Classifier, self).__init__()
 
+        self.disable_wandb = disable_wandb
         algorithm_backbone = {
             'tabresnet': TabResNet,
             'inn': HyperNet,
@@ -100,7 +101,8 @@ class Classifier():
         else:
             criterion = torch.nn.MSELoss()
 
-        wandb.watch(self.model, criterion, log='all', log_freq=10)
+        if not self.disable_wandb:
+            wandb.watch(self.model, criterion, log='all', log_freq=10)
 
         ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0,
                                        (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
@@ -193,8 +195,9 @@ class Classifier():
             loss_per_epoch.append(loss_value)
             train_auroc_per_epoch.append(train_auroc.detach().to('cpu').item())
 
-            wandb.log({"Train:loss": loss_value, "Train:auroc": train_auroc,
-                       "Learning rate": optimizer.param_groups[0]['lr']})
+            if not self.disable_wandb:
+                wandb.log({"Train:loss": loss_value, "Train:auroc": train_auroc,
+                           "Learning rate": optimizer.param_groups[0]['lr']})
 
             torch.save(self.model.state_dict(), os.path.join(self.output_directory, 'model.pt'))
 

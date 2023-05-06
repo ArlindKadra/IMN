@@ -64,11 +64,7 @@ class Experiment:
                 import torch
                 dev = torch.device(
                     'cuda') if torch.cuda.is_available() else torch.device('cpu')
-                import wandb
-                wandb.init(
-                    project='INN',
-                    config=self.args,
-                )
+
                 model = Classifier(
                     network_configuration,
                     args=self.args,
@@ -78,6 +74,7 @@ class Experiment:
                     device=dev,
                     output_directory=output_directory,
                     mode=self.args.mode,
+                    disable_wandb=True,
                 )
                 #self.trained_models.append(model.train(X, y.ravel()))
                 y = y.ravel()
