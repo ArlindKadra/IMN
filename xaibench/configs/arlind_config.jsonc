@@ -19,6 +19,35 @@
     ],
     "explainers": [
         {
+            "name": "random",
+            "expl_kwargs": {}
+        },
+        {
+            "name": "breakdown",
+            "expl_kwargs": {}
+        },
+        {
+            "name": "shap",
+            "expl_kwargs": {}
+        },
+        {
+            "name": "shapr",
+            "expl_kwargs": {
+                "sigma": 0.4
+            }
+        },
+        {
+            "name": "brutekernelshap",
+            "expl_kwargs": {}
+        },
+        {
+            "name": "maple",
+            "expl_kwargs": {
+                "n_estimators": 200,
+                "min_samples_leaf": 10
+            }
+        },
+        {
             "name": "lime",
             "expl_kwargs": {
                 "kernel_width": 0.5
@@ -29,7 +58,7 @@
             "expl_kwargs": {
                 "batch_size": 1024
             }
-        }
+        },
     ],
     "metrics": ["roar_faithfulness", "roar_monotonicity", "faithfulness", "monotonicity", "shapley", "shapley_corr", "infidelity"],
     "conditional": "observational" // observational, interventional
