@@ -113,6 +113,10 @@ def main(args: argparse.Namespace) -> None:
 
             X_train = column_transformer.fit_transform(X_train)
             X_test = column_transformer.transform(X_test)
+        else:
+            X_train = X_train.to_numpy()
+            X_test = X_test.to_numpy()
+
         model = TabNetClassifier(**tabnet_params)
 
     if args.model_name == 'catboost':
