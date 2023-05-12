@@ -9,7 +9,9 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.utils.class_weight import compute_class_weight
-
+from pytorch_tabnet.tab_model import TabNetClassifier
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.compose import ColumnTransformer
 import numpy as np
 import wandb
 
@@ -29,6 +31,7 @@ def main(args: argparse.Namespace) -> None:
         'catboost': False,
         'decision_tree': True,
         'logistic_regression': True,
+        'tabnet': False,
     }
 
     info = get_dataset(
@@ -41,10 +44,19 @@ def main(args: argparse.Namespace) -> None:
     dataset_name = info['dataset_name']
     X_train = info['X_train']
     X_test = info['X_test']
+
+    #dropped_index = X_train.columns.get_loc(column_to_drop)
+    #X_train.drop(columns=[column_to_drop], inplace=True)
+    #X_test.drop(columns=[column_to_drop], inplace=True)
+
     y_train = info['y_train']
     y_test = info['y_test']
     categorical_indicator = info['categorical_indicator']
+    #del categorical_indicator[dropped_index]
+
     categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
+    # count number of unique categories per pandas column
+    categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
     attribute_names = info['attribute_names']
 
     # the reference to info is not needed anymore
@@ -59,6 +71,15 @@ def main(args: argparse.Namespace) -> None:
     )
     wandb.config['dataset_name'] = dataset_name
     start_time = time.time()
+    # count number of categorical variables
+    nr_categorical = np.sum(categorical_indicator)
+    tabnet_params = {
+        "cat_idxs": [i for i in range(nr_categorical)],
+        "cat_dims": categorical_counts,
+        "seed": seed,
+        "device_name": "cuda",
+    }
+
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
     elif args.model_name == 'catboost':
@@ -73,9 +94,25 @@ def main(args: argparse.Namespace) -> None:
         model = DecisionTreeClassifier(random_state=seed)
     elif args.model_name == 'logistic_regression':
         model = LogisticRegression(random_state=seed, class_weight='balanced', multi_class='multinomial' if nr_classes > 2 else 'ovr')
+    elif args.model_name == 'tabnet':
+        categorical_preprocessor = (
+            'categorical_encoder',
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, ),
+            categorical_indicator,
+        )
+        column_transformer = ColumnTransformer(
+            [categorical_preprocessor],
+            remainder='passthrough',
+        )
+
+        X_train = column_transformer.fit_transform(X_train)
+        X_test = column_transformer.transform(X_test)
+        model = TabNetClassifier(**tabnet_params)
 
     if args.model_name == 'catboost':
         model.fit(X_train, y_train, cat_features=categorical_indices)
+    elif args.model_name == 'tabnet':
+        model.fit(X_train, y_train, weights=1)
     else:
         model.fit(X_train, y_train)
 
@@ -167,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--model_name',
         type=str,
-        default='logistic_regression',
+        default='tabnet',
         help='The name of the baseline model to use',
     )
     parser.add_argument(

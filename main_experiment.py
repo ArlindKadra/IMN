@@ -33,6 +33,12 @@ def main(args: argparse.Namespace) -> None:
     )
 
     dataset_name = info['dataset_name']
+    X_train = info['X_train']
+    X_test = info['X_test']
+
+    X_train.drop(columns=['capital-loss'], inplace=True)
+    X_test.drop(columns=['capital-loss'], inplace=True)
+
     X_train = info['X_train'].to_numpy()
     X_train = X_train.astype(np.float32)
     X_test = info['X_test'].to_numpy()
@@ -42,10 +48,11 @@ def main(args: argparse.Namespace) -> None:
 
     attribute_names = info['attribute_names']
     categorical_indicator = info['categorical_indicator']
+
     # the reference to info is not needed anymore
     del info
 
-    nr_features = X_train.shape[1]
+    nr_features = X_train.shape[1] if len(X_train.shape) > 1 else 1
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
 
@@ -213,7 +220,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.1,
+        default=1,
         help="Weight decay",
     )
     parser.add_argument(
@@ -231,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=41143,
+        default=1590,
         help='Dataset id',
     )
     parser.add_argument(

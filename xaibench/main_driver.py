@@ -67,7 +67,7 @@ def get_args():
     parser.add_argument(
         "--seed",
         type=int,
-        default=7,
+        default=0,
         help="Setting a seed to make everything deterministic.",
     )
     parser.add_argument(
@@ -144,7 +144,7 @@ def get_args():
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.1,
+        default=0,
         help="Weight decay",
     )
     parser.add_argument(

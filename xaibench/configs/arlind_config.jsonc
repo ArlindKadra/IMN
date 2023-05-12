@@ -1,6 +1,6 @@
 {
     "dataset": {
-        "name": "gaussianPiecewiseConstant",  // gaussianNonLinearAdditive, gaussianLinear, gaussianPiecewiseConstant
+        "name": "gaussianLinear",  // gaussianNonLinearAdditive, gaussianLinear, gaussianPiecewiseConstant
         "data_kwargs": {
             "mu": "np.zeros(5)",
             // "sigma": "np.identity(4)",

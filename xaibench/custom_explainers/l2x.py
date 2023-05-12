@@ -1,6 +1,16 @@
 from __future__ import print_function
-import numpy as np
 import tensorflow as tf
+
+from keras.callbacks import ModelCheckpoint
+from keras.layers import Dense, Input, Flatten, Add, Multiply, Lambda
+from keras.layers.normalization import BatchNormalization
+from keras.models import Model, Sequential
+from keras import regularizers
+from keras import backend as K
+from keras.engine.topology import Layer
+
+import numpy as np
+
 import pandas as pd
 
 # import cPickle as pkl
@@ -13,13 +23,7 @@ import os
 import glob
 import time
 import copy
-from keras.callbacks import ModelCheckpoint
-from keras.layers import Dense, Input, Flatten, Add, Multiply, Lambda
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model, Sequential
-from keras import regularizers
-from keras import backend as K
-from keras.engine.topology import Layer
+
 
 # from make_data import generate_data
 import json

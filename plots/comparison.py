@@ -10,6 +10,22 @@ import pandas as pd
 import numpy as np
 
 import scipy.stats as stats
+import matplotlib
+matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+sns.set(
+    rc={
+        'figure.figsize': (11.7, 8.27),
+        'font.size': 31,
+        'axes.titlesize': 31,
+        'axes.labelsize': 31,
+        'xtick.labelsize': 31,
+        'ytick.labelsize': 31,
+        'legend.fontsize': 31,
+    },
+    style="white"
+)
+
 
 def prepare_method_results(output_dir:str, method_name: str):
 
@@ -54,18 +70,24 @@ def distribution_methods(output_dir: str, method_names: list):
     for method_name in method_names:
         method_results.append(prepare_method_results(output_dir, method_name))
 
+    decision_tree_results = prepare_method_results(output_dir, 'decision_tree')
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
     # prepare distribution plot
-    df = pd.DataFrame()
+    df_results = []
+
     for method_name, method_result in zip(method_names, method_results):
-        df = df.append(method_result.assign(method=method_name))
+        # normalize method performances by decision tree performance for each dataset
+        method_result['test_auroc'] = method_result['test_auroc'] / decision_tree_results['test_auroc']
+        df_results.append(method_result.assign(method=method_name))
+
+    df = pd.concat(df_results, axis=0)
 
     df['train_auroc'] = df['train_auroc'].fillna(0)
     df['test_auroc'] = df['test_auroc'].fillna(0)
     plt.boxplot([df[df['method'] == method_name]['test_auroc'] for method_name in method_names])
     plt.xticks(range(1, len(method_names) + 1), pretty_names)
-    plt.ylabel('Test AUROC')
+    plt.ylabel('Gain')
     plt.savefig(os.path.join(output_dir, 'test_performance_comparison.pdf'), bbox_inches="tight")
 
 def rank_methods(output_dir: str, method_names: list):
@@ -73,6 +95,7 @@ def rank_methods(output_dir: str, method_names: list):
     inn_wins = 0
     catboost_wins = 0
     pretty_method_names = {
+        'ordinal_inn': "Ordinal INN",
         'inn': 'INN',
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
@@ -87,10 +110,11 @@ def rank_methods(output_dir: str, method_names: list):
     for method_name in method_names:
         method_results.append(prepare_method_results(output_dir, method_name))
 
-    df = pd.DataFrame()
+    result_dfs = []
     for method_name, method_result in zip(method_names, method_results):
-        df = df.append(method_result.assign(method=method_name))
+        result_dfs.append(method_result.assign(method=method_name))
 
+    df = pd.concat(result_dfs, axis=0)
     method_ranks = dict()
     for method_name in method_names:
         method_ranks[method_name] = []
@@ -105,7 +129,7 @@ def rank_methods(output_dir: str, method_names: list):
                 # get test performance of method on dataset
                 method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_auroc'].values[0]
                 method_dataset_performances.append(method_test_performance)
-                if method_name == 'inn':
+                if method_name == 'ordinal_inn':
                     considered_methods.append(method_test_performance)
                 if method_name == 'random_forest':
                     considered_methods.append(method_test_performance)
@@ -168,7 +192,7 @@ def prepare_cd_data(output_dir: str, method_names: list):
         method_results[method_name] = method_result
 
     # prepare distribution plot
-    df = pd.DataFrame()
+    df_results = []
 
     filtered_tasks = method_results['inn']['dataset_id']
     for method_name in method_names:
@@ -179,11 +203,53 @@ def prepare_cd_data(output_dir: str, method_names: list):
         missing_tasks = set(filtered_tasks) - set(method_result['dataset_id'])
         if len(missing_tasks) > 0:
             missing_tasks = pd.DataFrame({'dataset_id': list(missing_tasks), 'test_auroc': [0] * len(missing_tasks)})
-            method_result = method_result.append(missing_tasks)
-        df = df.append(method_result.assign(method=pretty_method_names[method_name]))
-
+            method_result = pd.concat([method_result, missing_tasks], axis=0)
+        df_results.append(method_result.assign(method=pretty_method_names[method_name]))
+    df = pd.concat(df_results, axis=0)
     df['test_auroc'] = df['test_auroc'].fillna(0)
     df.to_csv(os.path.join(output_dir, 'cd_data.csv'), index=False)
+
+def calculate_method_time(output_dir: str, method_name: str):
+
+    result_dict = {
+        'dataset_id': [],
+        'time': [],
+
+    }
+    method_output_dir = os.path.join(output_dir, method_name)
+    for dataset_id in os.listdir(method_output_dir):
+        dataset_dir = os.path.join(method_output_dir, dataset_id)
+        seed_times = []
+        for seed in os.listdir(dataset_dir):
+            seed_dir = os.path.join(dataset_dir, seed)
+            try:
+                with open(os.path.join(seed_dir, 'output_info.json'), 'r') as f:
+                    seed_result = json.load(f)
+                    seed_times.append(seed_result['time'])
+            except FileNotFoundError:
+                print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
+        result_dict['dataset_id'].append(dataset_id)
+        result_dict['time'].append(np.mean(seed_times) if len(seed_times) > 0 else np.NAN)
+
+    return pd.DataFrame.from_dict(result_dict)
+
+
+def calculate_method_times(output_dir: str, method_names: list):
+
+    method_dfs = dict()
+    for method_name in method_names:
+        method_df = calculate_method_time(output_dir, method_name)
+        # take times as list
+        method_dfs[method_name] = method_df
+
+    dataset_ids = method_dfs['inn']['dataset_id']
+    slow_down = []
+    for dataset_id in dataset_ids:
+        inn_performance = method_dfs['inn'][method_dfs['inn']['dataset_id'] == dataset_id]['time'].values[0]
+        tabresnet = method_dfs['tabresnet'][method_dfs['tabresnet']['dataset_id'] == dataset_id]['time'].values[0]
+        slow_down.append(inn_performance / tabresnet)
+    print(f'Mean slow down: {np.mean(slow_down)}')
+    print(f'Std slow down: {np.std(slow_down)}')
 
 result_directory = os.path.expanduser(
     os.path.join(
@@ -193,7 +259,9 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'catboost', 'random_forest', 'tabresnet']
-rank_methods(result_directory, method_names)
+method_names = ['inn', 'tabresnet', 'random_forest', 'catboost']
+#rank_methods(result_directory, method_names)
 prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
+#distribution_methods(result_directory, method_names)
+calculate_method_times(result_directory, method_names)

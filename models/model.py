@@ -203,7 +203,7 @@ class Classifier():
 
         return self
 
-    def predict(self, X_test, y_test=None):
+    def predict(self, X_test, y_test=None, return_weights=True):
 
         # check if X_test is a DataFrame
         if isinstance(X_test, pd.DataFrame):
@@ -229,40 +229,54 @@ class Classifier():
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:
-                weights.append([np.abs(model_weights.detach().to('cpu').numpy())])
+                weights.append([model_weights.detach().to('cpu').numpy()])
 
         predictions = np.array(predictions)
         predictions = np.mean(predictions, axis=0)
         predictions = np.squeeze(predictions)
 
-        if self.interpretable:
+        if self.interpretable and return_weights:
             weights = np.array(weights)
             weights = np.squeeze(weights)
             if len(weights.shape) > 2:
                 weights = weights[-1, :, :]
                 weights = np.squeeze(weights)
 
+            weights = weights[:, :-1]
             if self.mode == 'classification':
                 if self.nr_classes == 2:
                     act_predictions = (predictions > 0.5).astype(int)
                 else:
                     act_predictions = np.argmax(predictions, axis=1)
 
-                weights = weights[:, :-1]
                 selected_weights = []
+                correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
                     # select the weights for the predicted class
                     if y_test[test_example_idx] == act_predictions[test_example_idx]:
                         if self.nr_classes > 2:
-                            selected_weights.append(weights[test_example_idx, :, predictions[test_example_idx]])
+                            selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
                         else:
                             selected_weights.append(weights[test_example_idx, :])
-
+                        correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
-
+                correct_test_examples = np.array(correct_test_examples)
             weights_importances = generate_weight_importances_top_k(weights, 5)
+            weights_averages = np.mean(weights, axis=0)
+            # normalize the weights
+            weights_averages = weights_averages / np.sum(weights_averages)
+
+            test_examples = X_test.detach().to('cpu').numpy()
+            correct_test_examples = test_examples[correct_test_examples]
+
+            weights = weights * correct_test_examples
+            weights = np.mean(np.abs(weights), axis=0)
+            weights = weights / np.sum(weights)
 
         if self.interpretable:
-            return predictions, weights_importances
+            if return_weights:
+                return predictions, weights
+            else:
+                return predictions
         else:
             return predictions

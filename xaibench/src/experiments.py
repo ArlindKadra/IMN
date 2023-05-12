@@ -59,7 +59,7 @@ class Experiment:
                 }
                 categorical_indicator = [False] * X.shape[1]
                 attribute_names = [str(i) for i in range(X.shape[1])]
-                interpretable = False
+                interpretable = True
                 output_directory = '.'
                 import torch
                 dev = torch.device(
