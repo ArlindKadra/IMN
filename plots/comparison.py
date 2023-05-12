@@ -60,11 +60,12 @@ def distribution_methods(output_dir: str, method_names: list):
     pretty_method_names = {
         'inn': 'INN',
         'inn_v2': 'INN 2',
-        'random_forest': 'Random Forest',
+        'random_forest': 'R. Forest',
         'catboost': 'CatBoost',
         'tabresnet': 'TabResNet',
         'decision_tree': 'Decision Tree',
         'logistic_regression': 'Logistic Regression',
+        'tabnet': 'TabNet',
     }
     method_results = []
     for method_name in method_names:
@@ -103,6 +104,7 @@ def rank_methods(output_dir: str, method_names: list):
         'tabresnet': 'TabResNet',
         'decision_tree': 'Decision Tree',
         'logistic_regression': 'Logistic Regression',
+        'tabnet': 'TabNet',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -182,6 +184,7 @@ def prepare_cd_data(output_dir: str, method_names: list):
         'tabresnet': 'TabResNet',
         'decision_tree': 'Decision Tree',
         'logistic_regression': 'Logistic Regression',
+        'tabnet': 'TabNet',
     }
     method_results = {}
     for method_name in method_names:
@@ -195,6 +198,10 @@ def prepare_cd_data(output_dir: str, method_names: list):
     df_results = []
 
     filtered_tasks = method_results['inn']['dataset_id']
+    # get the common dataset ids between all methods
+    #for method_name in method_names:
+    #    filtered_tasks = set(filtered_tasks).intersection(set(method_results[method_name]['dataset_id']))
+
     for method_name in method_names:
         method_result = method_results[method_name]
         # only consider tasks that are in inn
@@ -202,11 +209,12 @@ def prepare_cd_data(output_dir: str, method_names: list):
         # if missing tasks, add them with 0
         missing_tasks = set(filtered_tasks) - set(method_result['dataset_id'])
         if len(missing_tasks) > 0:
-            missing_tasks = pd.DataFrame({'dataset_id': list(missing_tasks), 'test_auroc': [0] * len(missing_tasks)})
+            missing_tasks = pd.DataFrame({'dataset_id': list(missing_tasks), 'test_auroc': [1] * len(missing_tasks)})
             method_result = pd.concat([method_result, missing_tasks], axis=0)
         df_results.append(method_result.assign(method=pretty_method_names[method_name]))
+
     df = pd.concat(df_results, axis=0)
-    df['test_auroc'] = df['test_auroc'].fillna(0)
+    df['test_auroc'] = df['test_auroc'].fillna(1)
     df.to_csv(os.path.join(output_dir, 'cd_data.csv'), index=False)
 
 def calculate_method_time(output_dir: str, method_name: str):
@@ -259,9 +267,9 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'tabresnet', 'random_forest', 'catboost']
+method_names = ['inn', 'tabresnet', 'tabnet', 'random_forest', 'catboost']
 #rank_methods(result_directory, method_names)
-prepare_cd_data(result_directory, method_names)
+#prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
-#distribution_methods(result_directory, method_names)
-calculate_method_times(result_directory, method_names)
+distribution_methods(result_directory, method_names)
+#calculate_method_times(result_directory, method_names)

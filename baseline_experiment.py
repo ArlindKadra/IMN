@@ -44,11 +44,12 @@ def main(args: argparse.Namespace) -> None:
     dataset_name = info['dataset_name']
     X_train = info['X_train']
     X_test = info['X_test']
-
-    #dropped_index = X_train.columns.get_loc(column_to_drop)
-    #X_train.drop(columns=[column_to_drop], inplace=True)
-    #X_test.drop(columns=[column_to_drop], inplace=True)
-
+    """
+    column_to_drop = 'capital-loss'
+    dropped_index = X_train.columns.get_loc(column_to_drop)
+    X_train.drop(columns=[column_to_drop], inplace=True)
+    X_test.drop(columns=[column_to_drop], inplace=True)
+    """
     y_train = info['y_train']
     y_test = info['y_test']
     categorical_indicator = info['categorical_indicator']
@@ -74,8 +75,8 @@ def main(args: argparse.Namespace) -> None:
     # count number of categorical variables
     nr_categorical = np.sum(categorical_indicator)
     tabnet_params = {
-        "cat_idxs": [i for i in range(nr_categorical)],
-        "cat_dims": categorical_counts,
+        "cat_idxs": [i for i in range(nr_categorical)] if nr_categorical > 0 else [],
+        "cat_dims": categorical_counts if nr_categorical > 0 else [],
         "seed": seed,
         "device_name": "cuda",
     }
@@ -95,18 +96,23 @@ def main(args: argparse.Namespace) -> None:
     elif args.model_name == 'logistic_regression':
         model = LogisticRegression(random_state=seed, class_weight='balanced', multi_class='multinomial' if nr_classes > 2 else 'ovr')
     elif args.model_name == 'tabnet':
-        categorical_preprocessor = (
-            'categorical_encoder',
-            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, ),
-            categorical_indicator,
-        )
-        column_transformer = ColumnTransformer(
-            [categorical_preprocessor],
-            remainder='passthrough',
-        )
+        if nr_categorical > 0:
+            cat_attribute_names = [attribute_names[i] for i in categorical_indices]
+            numerical_attribute_names = [attribute_names[i] for i in range(len(attribute_names)) if i not in categorical_indices]
+            attribute_names = cat_attribute_names
+            attribute_names.extend(numerical_attribute_names)
+            categorical_preprocessor = (
+                'categorical_encoder',
+                OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+                categorical_indicator,
+            )
+            column_transformer = ColumnTransformer(
+                [categorical_preprocessor],
+                remainder='passthrough',
+            )
 
-        X_train = column_transformer.fit_transform(X_train)
-        X_test = column_transformer.transform(X_test)
+            X_train = column_transformer.fit_transform(X_train)
+            X_test = column_transformer.transform(X_test)
         model = TabNetClassifier(**tabnet_params)
 
     if args.model_name == 'catboost':
@@ -186,13 +192,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',
         type=int,
-        default=11,
+        default=0,
         help='Random seed'
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
+        default=54,
         help='Dataset id'
     )
     parser.add_argument(
