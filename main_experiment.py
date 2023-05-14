@@ -32,23 +32,19 @@ def main(args: argparse.Namespace) -> None:
         encoding_type=args.encoding_type,
     )
 
-    dataset_name = info['dataset_name']
     X_train = info['X_train']
     X_test = info['X_test']
+    dataset_name = info['dataset_name']
 
-    X_train.drop(columns=['capital-loss'], inplace=True)
-    X_test.drop(columns=['capital-loss'], inplace=True)
-
-    X_train = info['X_train'].to_numpy()
+    X_train = X_train.to_numpy()
     X_train = X_train.astype(np.float32)
-    X_test = info['X_test'].to_numpy()
+    X_test = X_test.to_numpy()
     X_test = X_test.astype(np.float32)
     y_train = info['y_train']
     y_test = info['y_test']
 
     attribute_names = info['attribute_names']
     categorical_indicator = info['categorical_indicator']
-
     # the reference to info is not needed anymore
     del info
 
@@ -153,6 +149,24 @@ def main(args: argparse.Namespace) -> None:
             'time': end_time - start_time,
         }
 
+    """
+    def f(X):
+        return model.predict([X[:, i] for i in range(X.shape[1])]).flatten()
+
+    med = np.median(X_test, axis=0).reshape((1, X_test.shape[1]))
+    explainer = shap.Explainer(f, med)
+    shap_weights = []
+    # reshape example
+    for i in range(X_test.shape[0]):
+        example = X_test[i, :]
+        example = example.reshape((1, X_test.shape[1]))
+        shap_values = explainer.shap_values(example)
+        shap_weights.append(shap_values)
+    shap_weights = np.array(shap_weights)
+    shap_weights = np.squeeze(shap_weights, axis=1)
+    shap_weights = np.mean(np.abs(shap_weights), axis=0)
+    shap_weights = shap_weights / np.sum(shap_weights)
+    """
     if interpretable:
         # print attribute name and weight for the top 10 features
         sorted_idx = np.argsort(weight_importances)[::-1]

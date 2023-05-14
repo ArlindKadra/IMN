@@ -5,8 +5,9 @@ from xaibench.custom_explainers import GroundTruthShap
 from tqdm import tqdm
 import logging
 from sklearn.metrics import accuracy_score, mean_squared_error
-from models.model import Classifier
+#from models.model import Classifier
 
+from pytorch_tabnet.tab_model import TabNetRegressor
 
 class DatasetAsModel():
     def __init__(self, data_class) -> None:
@@ -64,7 +65,7 @@ class Experiment:
                 import torch
                 dev = torch.device(
                     'cuda') if torch.cuda.is_available() else torch.device('cpu')
-
+                """
                 model = Classifier(
                     network_configuration,
                     args=self.args,
@@ -76,16 +77,19 @@ class Experiment:
                     mode=self.args.mode,
                     disable_wandb=True,
                 )
+                """
+                model = TabNetRegressor()
                 #self.trained_models.append(model.train(X, y.ravel()))
-                y = y.ravel()
-                self.trained_models.append(model.fit(X, y.ravel()))
+                #y = y.ravel()
+                model.fit(X, y)
+                self.trained_models.append(model)
 
         return self.trained_models
 
     def generate_explanations(self, trained_model, explainer):
         X_train = self.dataset.data[0]
         X_val = self.dataset.val_data[0]
-        explainer = explainer.explainer(trained_model, X_train) if explainer.name == "breakdown" else explainer.explainer(trained_model.predict, X_train)
+        explainer = explainer.explainer(trained_model, X_train) if explainer.name == "breakdown" else explainer.explainer(trained_model, X_train)
         feature_weights = explainer.explain(X_val)
         feature_weights_train = None
         metrics_names = [m.name for m in self.metrics]

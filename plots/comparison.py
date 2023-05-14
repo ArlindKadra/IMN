@@ -269,7 +269,7 @@ result_directory = os.path.expanduser(
 
 method_names = ['inn', 'tabresnet', 'tabnet', 'random_forest', 'catboost']
 #rank_methods(result_directory, method_names)
-#prepare_cd_data(result_directory, method_names)
+prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
-distribution_methods(result_directory, method_names)
+#distribution_methods(result_directory, method_names)
 #calculate_method_times(result_directory, method_names)

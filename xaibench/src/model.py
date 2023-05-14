@@ -1,7 +1,7 @@
 from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-from models.model import Classifier
+#from models.model import Classifier
 
 valid_models = {
     "regression": {
@@ -9,14 +9,14 @@ valid_models = {
         "lr": LinearRegression,
         "mlp": MLPRegressor,
         "dtree": DecisionTreeRegressor,
-        "tabresnet": Classifier,
+        #"tabresnet": Classifier,
     },
     "classification": {
         "dataset": lambda : "dataset",
         "lr": LinearRegression,
         "mlp": MLPClassifier,
         "dtree": DecisionTreeClassifier,
-        "tabresnet": Classifier,
+        #"tabresnet": Classifier,
     },
 }
 

@@ -8,9 +8,10 @@ valid_explainers = {
     "random": custom_explainers.Random,
     "lime": custom_explainers.Lime,
     "maple": custom_explainers.Maple,
-    "l2x": custom_explainers.L2X,
+    #"l2x": custom_explainers.L2X,
     "breakdown": custom_explainers.BreakDown,
     "inn": custom_explainers.INNExplainerWrapper,
+    "tabnet": custom_explainers.TabNetExplainerWrapper,
 }
 
 

@@ -44,16 +44,9 @@ def main(args: argparse.Namespace) -> None:
     dataset_name = info['dataset_name']
     X_train = info['X_train']
     X_test = info['X_test']
-    """
-    column_to_drop = 'capital-loss'
-    dropped_index = X_train.columns.get_loc(column_to_drop)
-    X_train.drop(columns=[column_to_drop], inplace=True)
-    X_test.drop(columns=[column_to_drop], inplace=True)
-    """
     y_train = info['y_train']
     y_test = info['y_test']
     categorical_indicator = info['categorical_indicator']
-    #del categorical_indicator[dropped_index]
 
     categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
     # count number of unique categories per pandas column
@@ -157,8 +150,8 @@ def main(args: argparse.Namespace) -> None:
         sorted_idx = sorted_idx.tolist()
 
     # get the names of the top 10 features
-    top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
-    top_10_importances = [feature_importances[i] for i in sorted_idx[:10]]
+    top_10_features = [attribute_names[i] for i in sorted_idx]
+    top_10_importances = [feature_importances[i] for i in sorted_idx]
     print("Top 10 features: %s" % top_10_features)
     print("Top 10 feature importances: %s" % top_10_importances)
 
@@ -202,7 +195,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=54,
+        default=31,
         help='Dataset id'
     )
     parser.add_argument(

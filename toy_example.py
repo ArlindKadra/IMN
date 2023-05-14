@@ -15,8 +15,8 @@ sns.set(
     rc={
         'figure.figsize': (11.7, 8.27),
         'font.size': 27,
-        'axes.titlesize': 21,
-        'axes.labelsize': 21,
+        'axes.titlesize': 27,
+        'axes.labelsize': 27,
         'xtick.labelsize': 27,
         'ytick.labelsize': 27,
         'legend.fontsize': 27,
@@ -99,7 +99,7 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=labels,
 )
 """
-fig, ax = plt.subplots(3, 3)
+fig, ax = plt.subplots(2, 2)
 X_train, labels = make_moons(n_samples=1000, shuffle=True, random_state=seed, noise=0.1)
 first_feature = X_train[:, 0]
 second_feature = X_train[:, 1]
@@ -115,8 +115,8 @@ model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight
 model.fit(X_train, labels)
 y_pred = model.predict(X_train)
 print(f'Random forest accuracy: {np.sum(y_pred == labels) / len(labels)}')
-X_train = torch.tensor(X_train, dtype=torch.float32).to('cuda')
-y_train = torch.tensor(labels, dtype=torch.float32).to('cuda')
+X_train = torch.tensor(X_train, dtype=torch.float32).to('cpu')
+y_train = torch.tensor(labels, dtype=torch.float32).to('cpu')
 
 batch_size = 32
 train_dataset = torch.utils.data.TensorDataset(
@@ -131,7 +131,7 @@ hypernet = HyperNet(
     nr_classes=1,
     nr_blocks=2,
     hidden_size=128,
-).to('cuda')
+).to('cpu')
 
 criterion = torch.nn.BCEWithLogitsLoss()
 second_criterion = torch.nn.MSELoss()
@@ -214,7 +214,7 @@ for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100
     output_list = []
     points = []
     for second_feature in np.linspace(min_second_feature, max_second_feature, 100):
-        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cuda'))
+        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'))
         output = output.squeeze()
         output = output.detach().cpu().numpy()
         output_list.append(output)
@@ -238,7 +238,7 @@ y = [math.sin(point) for point in first_feature]
 
 chosen_indices = np.random.choice(range(X_train.shape[0]), 2, replace=False)
 chosen_examples = X_train[chosen_indices]
-_, weights = hypernet(torch.tensor(chosen_examples).float().to('cuda'), return_weights=True)
+_, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True)
 weights = weights.detach().to('cpu').numpy()
 #plt.figure()
 ax[0, 1].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
@@ -271,7 +271,6 @@ ax[0, 1].set_ylabel('$x_2$')
 ax[0, 1].set_title('Locally Interpretable')
 first_feature = np.arange(0, 15, 0.5)
 y = [math.sin(point) for point in first_feature]
-handles, labels = ax[0, 1].get_legend_handles_labels()
 
 
 def legend_without_duplicate_labels(fig):
@@ -285,13 +284,14 @@ def legend_without_duplicate_labels(fig):
             remove_duplicates[labels[i]] = True
             new_lines.append(lines[i])
             new_labels.append(labels[i])
-    fig.legend(new_lines, new_labels, bbox_to_anchor=(0.5, 0.4), loc='lower center', ncol=3)
+    fig.legend(new_lines, new_labels, loc='center left', bbox_to_anchor=(0.95, 0.7))
 #fig.legend(handles, labels, bbox_to_anchor=(0.5, 0.45), loc='lower center', ncol=3)
 
-for i in range(1, 3):
-    for j in range(3):
+for i in range(1, 2):
+    for j in range(2):
         ax[i, j].set_visible(False)
-
+legend_without_duplicate_labels(fig)
+fig.savefig('motivation.pdf', bbox_inches='tight')
 """
 hypernet.eval()
 X_train = torch.tensor(X_train).float().to('cuda')
@@ -307,7 +307,7 @@ ax = plt.figure().add_subplot(projection='3d')
 
 ax.scatter(X, Y, Z)
 plt.savefig('3dweights.pdf', bbox_inches='tight')
-"""
+
 nr_features = X_train.shape[1]
 X_train, labels = make_moons(n_samples=1000, shuffle=True, random_state=seed, noise=0.1)
 
@@ -320,12 +320,16 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 nr_random_features = [nr_features * i for i in range(1, 5)]
 X_train_base = copy.deepcopy(X_train)
-y_train = torch.tensor(y_train, dtype=torch.float32).to('cuda')
-y_test = torch.tensor(y_test, dtype=torch.float32).to('cuda')
+y_train = torch.tensor(y_train, dtype=torch.float32).to('cpu')
+y_test = torch.tensor(y_test, dtype=torch.float32).to('cpu')
 
 weight_norm = 0
 first_feature_importances = []
 second_feature_importances = []
+legend_without_duplicate_labels(fig)
+#plt.plot(first_feature, y, label='Global hyperplane', color='green')
+fig.savefig('motivation.pdf', bbox_inches='tight')
+
 for number_rfeatures in nr_random_features:
 
     # generate random noise
@@ -341,8 +345,8 @@ for number_rfeatures in nr_random_features:
             X_train_noise = copy.deepcopy(X_train)
             X_test_noise = copy.deepcopy(X_test)
 
-        X_test_noise = torch.tensor(X_test_noise, dtype=torch.float32).to('cuda')
-        X_train_new = torch.tensor(X_train_noise, dtype=torch.float32).to('cuda')
+        X_test_noise = torch.tensor(X_test_noise, dtype=torch.float32).to('cpu')
+        X_train_new = torch.tensor(X_train_noise, dtype=torch.float32).to('cpu')
         train_dataset = torch.utils.data.TensorDataset(
             X_train_new,
             y_train,
@@ -356,14 +360,14 @@ for number_rfeatures in nr_random_features:
                 nr_classes=1,
                 nr_blocks=2,
                 hidden_size=128,
-            ).to('cuda')
+            ).to('cpu')
         else:
             model = HyperNet(
                 nr_features=X_train_new.size(1),
                 nr_classes=1,
                 nr_blocks=2,
                 hidden_size=128,
-            ).to('cuda')
+            ).to('cpu')
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         nr_epochs = 100
@@ -408,21 +412,25 @@ for number_rfeatures in nr_random_features:
         weights = weights.squeeze()
         weights = weights[:, :-1]
         weights = weights.detach().to('cpu').numpy()
-        weight_importances = generate_weight_importances_top_k(weights, 2)
+        weights = weights * X_test_noise.detach().to('cpu').numpy()
+        weights = np.abs(weights)
+        weight_importances = np.mean(weights, axis=0)
+        weight_importances = weight_importances / np.sum(weight_importances)
         first_feature_importances.append(weight_importances[0])
         second_feature_importances.append(weight_importances[1])
         print(f'First feature importance: {first_feature_importances}')
         print(f'Second feature importance: {second_feature_importances}')
 
-ax[0, 2].plot(nr_random_features, first_feature_importances, color='blue')
-ax[0, 2].plot(nr_random_features, second_feature_importances, color='red')
-ax[0, 2].set_title('Noise Resilience')
-ax[0, 2].set_xlabel('Nr. of Random Features')
+#ax[0, 2].plot(nr_random_features, first_feature_importances, color='blue')
+#ax[0, 2].plot(nr_random_features, second_feature_importances, color='red')
+#ax[0, 2].set_title('Noise Resilience')
+#ax[0, 2].set_xlabel('Nr. of Random Features')
 #ax[0, 2].set_ylabel('$|\hat{w}|$')
-ax[0, 2].set_xticks(nr_random_features)
-ax[0, 2].text(4, 0.475, r"$|\hat{w}\left(x_2\right)|$", fontsize=23, color='red')
-ax[0, 2].text(4, 0.44, r"$|\hat{w}\left(x_1\right)|$", fontsize=23, color='blue')
-fig.subplots_adjust(wspace=0.55)
+#ax[0, 2].set_xticks(nr_random_features)
+#ax[0, 2].text(4, 0.475, r"$|\hat{w}\left(x_2\right) x|$", fontsize=23, color='red')
+#ax[0, 2].text(4, 0.44, r"$|\hat{w}\left(x_1\right) x|$", fontsize=23, color='blue')
+#fig.subplots_adjust(wspace=0.55)
 legend_without_duplicate_labels(fig)
 #plt.plot(first_feature, y, label='Global hyperplane', color='green')
 fig.savefig('motivation.pdf', bbox_inches='tight')
+"""
