@@ -16,7 +16,7 @@ cat requirements.txt | xargs -n 1 -L 1 pip install
 ## Running the code
 
 The entry script to run INN and TabResNet is `main_experiment.py`. 
-To entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `baseline_experiment.py`.
+The entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `baseline_experiment.py`.
 
 The main arguments for `main_experiment.py` are:
 
