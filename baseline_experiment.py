@@ -4,21 +4,21 @@ import os
 import time
 
 from catboost import CatBoostClassifier
+import numpy as np
+from pytorch_tabnet.tab_model import TabNetClassifier
+from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
-from sklearn.utils.class_weight import compute_class_weight
-from pytorch_tabnet.tab_model import TabNetClassifier
 from sklearn.preprocessing import OrdinalEncoder
-from sklearn.compose import ColumnTransformer
-import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 import wandb
 
 from utils import get_dataset
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace):
 
     np.random.seed(args.seed)
 
@@ -27,10 +27,10 @@ def main(args: argparse.Namespace) -> None:
     seed = args.seed
 
     encode_categorical_variables = {
-        'random_forest': True,
         'catboost': False,
         'decision_tree': True,
         'logistic_regression': True,
+        'random_forest': True,
         'tabnet': False,
     }
 
@@ -75,7 +75,7 @@ def main(args: argparse.Namespace) -> None:
     }
 
     if args.model_name == 'random_forest':
-        model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
+        model = RandomForestClassifier(random_state=seed, class_weight='balanced')
     elif args.model_name == 'catboost':
         model = CatBoostClassifier(
             task_type='GPU',
@@ -103,7 +103,6 @@ def main(args: argparse.Namespace) -> None:
                 [categorical_preprocessor],
                 remainder='passthrough',
             )
-
             X_train = column_transformer.fit_transform(X_train)
             X_test = column_transformer.transform(X_test)
         else:
@@ -120,14 +119,18 @@ def main(args: argparse.Namespace) -> None:
         model.fit(X_train, y_train)
 
     train_predictions_labels = model.predict(X_train)
-    train_predictions_probabilities = model.predict_proba(X_train)[:, 1] if nr_classes == 2 else model.predict_proba(X_train)
+    train_predictions_probabilities = model.predict_proba(X_train)
+    if nr_classes == 2:
+        train_predictions_probabilities = model.predict_proba(X_train)[:, 1]
     test_predictions_labels = model.predict(X_test)
-    test_predictions_probabilities = model.predict_proba(X_test)[:, 1] if nr_classes == 2 else model.predict_proba(X_test)
+    test_predictions_probabilities = model.predict_proba(X_test)
+    if nr_classes == 2:
+        test_predictions_probabilities = model.predict_proba(X_test)[:, 1]
 
     # calculate the balanced accuracy
-    train_auroc = roc_auc_score(y_train, train_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_train, train_predictions_probabilities, multi_class='ovo')
+    train_auroc = roc_auc_score(y_train, train_predictions_probabilities, multi_class='raise' if nr_classes == 2 else 'ovo')
     train_accuracy = accuracy_score(y_train, train_predictions_labels)
-    test_auroc = roc_auc_score(y_test, test_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_test, test_predictions_probabilities, multi_class='ovo')
+    test_auroc = roc_auc_score(y_test, test_predictions_probabilities, multi_class='raise' if nr_classes == 2 else 'ovo')
     test_accuracy = accuracy_score(y_test, test_predictions_labels)
 
     if args.model_name == 'logistic_regression':
@@ -141,6 +144,7 @@ def main(args: argparse.Namespace) -> None:
     else:
         # get the feature importances
         feature_importances = model.feature_importances_
+
     # sort the feature importances in descending order
     sorted_idx = np.argsort(feature_importances)[::-1]
 
@@ -166,8 +170,8 @@ def main(args: argparse.Namespace) -> None:
     output_info = {
         'train_auroc': train_auroc,
         'train_accuracy': train_accuracy,
-        'test_accuracy': test_accuracy,
         'test_auroc': test_auroc,
+        'test_accuracy': test_accuracy,
         'top_10_features': top_10_features,
         'top_10_features_weights': top_10_importances,
         'time': end_time - start_time,

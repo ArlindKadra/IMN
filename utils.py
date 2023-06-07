@@ -1,15 +1,14 @@
 from typing import Dict, List, Tuple
 
 import numpy as np
-import pandas as pd
 import openml
-import torch
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
+import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
 from scipy.stats import rankdata
+import torch
 
 
 def prepare_data_for_cutmix(
@@ -17,7 +16,21 @@ def prepare_data_for_cutmix(
     y: torch.Tensor,
     augmentation_prob: float = 0.5,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Generate the data after the cutmix augmentation.
 
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+
+    Returns:
+        x, y, y_shuffled, lam: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]
+            The augmented data, the labels of the first example of the pair,
+            the labels of the second example of the pair and the lambda value.
+    """
     # Shuffle the data
     indices = torch.randperm(x.size(0))
     x_shuffled = x[indices]
@@ -47,10 +60,27 @@ def prepare_data_for_cutmix(
 
 def prepare_data_for_mixup(
     x: torch.Tensor,
-    y: torch.Tensor, numerical_features: List,
+    y: torch.Tensor,
+    numerical_features: List,
     augmentation_prob: float = 0.5,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Generate the data after the mixup augmentation.
 
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        numerical_features: list
+            A list with the indices of numerical features.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+
+    Returns:
+        x, y, y_shuffled, lam: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]
+            The augmented data, the labels of the first example of the pair,
+            the labels of the second example of the pair and the lambda value.
+    """
     # Shuffle the data
     indices = torch.randperm(x.size(0))
     x_shuffled = x[indices]
@@ -78,7 +108,29 @@ def prepare_data_for_mixup(
     return x, y, y_shuffled, lam
 
 
-def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features: List, cut_mix_prob: float = 0.5) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+def prepare_data_for_cutout(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    numerical_features: List,
+    augmentation_prob: float = 0.5,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Generate the data after the cutout augmentation.
+
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        numerical_features: list
+            A list with the indices of numerical features.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+
+    Returns:
+        x, y, y_shuffled, lam: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]
+            The augmented data, the labels of the first example of the pair,
+            the labels of the second example of the pair and the lambda value.
+    """
 
     # Shuffle the data
     indices = torch.randperm(x.size(0))
@@ -87,7 +139,7 @@ def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features
     # Generate the lambda value
     lam = torch.distributions.beta.Beta(1, 1).sample()
 
-    if np.random.rand() > cut_mix_prob:
+    if np.random.rand() > augmentation_prob:
         lam = 1
     else:
         # Generate the mixup mask per example and feature
@@ -119,9 +171,36 @@ def prepare_data_for_cutout(x: torch.Tensor, y: torch.Tensor, numerical_features
 
     return x, y, y_shuffled, lam
 
-def fgsm_attack(x: torch.Tensor, y: torch.Tensor, model: torch.nn.Module, criterion, cut_mix_prob: float, epsilon: float) -> torch.Tensor:
 
-    if np.random.rand() > cut_mix_prob:
+def fgsm_attack(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    model: torch.nn.Module,
+    criterion,
+    augmentation_prob: float,
+    epsilon: float,
+) -> torch.Tensor:
+    """Generate the adversarial examples.
+
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        model: torch.nn.Module
+            A list with the indices of numerical features.
+        criterion: torch.nn._Loss
+            The loss function.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+        epsilon: float
+            The perturbation strength.
+
+    Returns:
+        adv_data: torch.Tensor
+            The adversarial data.
+    """
+    if np.random.rand() > augmentation_prob:
         return x
     else:
         # copy tensor to avoid changing the original one
@@ -139,12 +218,27 @@ def fgsm_attack(x: torch.Tensor, y: torch.Tensor, model: torch.nn.Module, criter
 
     return adv_data
 
+
 def random_noise(
     x: torch.Tensor,
     y: torch.Tensor,
     augmentation_prob: float = 0.5,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Generate examples with random perturbation.
 
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+
+    Returns:
+        x, y, y, 1: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]
+            The augmented data, the labels of the first example of the pair,
+            the labels of the second example of the pair and the lambda value.
+    """
 
     # Generate the lambda value
     lam = torch.distributions.beta.Beta(1, 1).sample()
@@ -167,8 +261,37 @@ def random_noise(
     return x, y, y, 1
 
 
-def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, model, criterion, augmentation_prob: float = 0.5) -> Tuple:
+def augment_data(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    numerical_features: List,
+    model: torch.nn.Module,
+    criterion,
+    augmentation_prob: float = 0.5
+) -> Tuple:
+    """Randomly chose a data augmentation technique and apply it.
 
+    Args:
+        x: torch.Tensor
+            The input data.
+        y: torch.Tensor
+            The target data.
+        numerical_features: list
+            A list with the indices of numerical features.
+        model: torch.nn.Module
+            A list with the indices of numerical features.
+        criterion: torch.nn._Loss
+            The loss function.
+        augmentation_prob: float
+            The probability of applying the augmentation.
+        epsilon: float
+            The perturbation strength.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]
+            The augmented data, the labels of the first example of the pair,
+            the labels of the second example of the pair and the lambda value.
+    """
     augmentation_types = {
         1: "mixup",
         2: "cutout",
@@ -199,20 +322,48 @@ def augment_data(x: torch.Tensor, y: torch.Tensor, numerical_features: List, mod
     else:
         raise ValueError("The augmentation type must be one of 'cutmix', 'mixup' or 'cutout'")
 
+
 def preprocess_dataset(
     X: pd.DataFrame,
     y: pd.DataFrame,
     encode_categorical: bool,
     categorical_indicator: List,
     attribute_names: List,
-    test_split_size=0.2,
-    seed=11,
+    test_split_size: float = 0.2,
+    seed: int = 11,
     encoding_type: str = "ordinal",
 ) -> Dict:
+    """Preprocess the dataset.
 
+    Args:
+        X: pd.DataFrame
+            The input data.
+        y: pd.DataFrame
+            The target data.
+        encode_categorical: bool
+            Whether to encode categorical features.
+        categorical_indicator: list
+            A list with the indices of categorical features.
+        attribute_names: list
+            A list with the names of the features.
+        test_split_size: float
+            The size of the test set.
+        seed: int
+            The seed for reproducibility.
+        encoding_type: str
+            The encoding type.
+
+    Returns:
+        info_dict: dict
+            A dictionary with the preprocessed data separated
+            into train and test sets. It additionally contains
+            the names of the features and the categorical indicator.
+    """
     dropped_column_names = []
     dropped_column_indices = []
 
+    # Drop columns with more than 90% missing values
+    # or with only one unique value
     for column_index, column_name in enumerate(X.keys()):
         if X[column_name].isnull().sum() > len(X[column_name]) * 0.9:
             dropped_column_names.append(column_name)
@@ -221,6 +372,7 @@ def preprocess_dataset(
             dropped_column_names.append(column_name)
             dropped_column_indices.append(column_index)
 
+    # Drop columns with more than 90% unique values
     for column_index, column_name in enumerate(X.keys()):
         if X[column_name].dtype == 'object' or X[column_name].dtype == 'category' or X[column_name].dtype == 'string':
             if X[column_name].nunique() / len(X[column_name]) > 0.9:
@@ -228,6 +380,8 @@ def preprocess_dataset(
                 dropped_column_indices.append(column_index)
 
     X = X.drop(dropped_column_names, axis=1)
+
+    # Keep only the names and categorical indicators for the columns that are not dropped
     attribute_names = [attribute_name for attribute_name in attribute_names if attribute_name not in dropped_column_names]
     categorical_indicator = [categorical_indicator[i] for i in range(len(categorical_indicator)) if i not in dropped_column_indices]
 
@@ -258,6 +412,7 @@ def preprocess_dataset(
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
     categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
 
+    # save the column types
     column_types = {}
     for column_name in X_train.keys():
         if X_train[column_name].dtype == 'object' or X_train[column_name].dtype == 'category' or X_train[column_name].dtype == 'string':
@@ -300,9 +455,6 @@ def preprocess_dataset(
     )
     X_train = column_transformer.fit_transform(X_train, y_train)
     X_test = column_transformer.transform(X_test)
-    # convert to dataframe and detect dtypes
-    # dataframe from numpy array
-    # create dataframe from numpy array
 
     if len(numerical_features) > 0:
         new_categorical_indicator = [False] * len(numerical_features)
@@ -328,6 +480,8 @@ def preprocess_dataset(
                     new_categorical_indicator.extend([True])
                     new_attribute_names.extend([attribute_names[categorical_features[i]]])
         """
+
+    # create dataframe from numpy array
     X_train = pd.DataFrame(X_train, columns=new_attribute_names)
     X_test = pd.DataFrame(X_test, columns=new_attribute_names)
 
@@ -343,7 +497,6 @@ def preprocess_dataset(
         else:
             # categorical variables where not encoded
             if not encode_categorical:
-
                 X_train[column_name] = X_train[column_name].cat.add_categories('missing')
                 X_train[column_name].cat.reorder_categories(np.roll(X_train[column_name].cat.categories, 1))
                 X_train[column_name] = X_train[column_name].fillna('missing')
@@ -363,9 +516,35 @@ def preprocess_dataset(
 
     return info_dict
 
-def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True, encoding_type: str ='ordinal') -> Dict:
 
-    # Get the data
+def get_dataset(
+    dataset_id: int,
+    test_split_size: float = 0.2,
+    seed: int = 11,
+    encode_categorical: bool = True,
+    encoding_type: str = 'ordinal',
+) -> Dict:
+    """Get the dataset from OpenML and preprocess it.
+
+    Args:
+        dataset_id: int
+            The id of the dataset on OpenML.
+        test_split_size: float
+            The size of the test set.
+        seed: int
+            The seed for reproducibility.
+        encode_categorical: bool
+            Whether to encode categorical variables.
+        encoding_type: str
+            The type of encoding to use for categorical variables.
+
+    Returns:
+        info_dict: dict
+            A dictionary with the preprocessed data separated
+            into train and test sets. It additionally contains
+            the names of the features, the categorical indicator
+            and the name of the dataset.
+    """
     dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
     dataset_name = dataset.name
     X, y, categorical_indicator, attribute_names = dataset.get_data(
@@ -383,22 +562,5 @@ def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorica
         encoding_type=encoding_type,
     )
     info_dict['dataset_name'] = dataset_name
+
     return info_dict
-
-def generate_weight_importances_top_k(weights: np.ndarray, k: int = 2) -> np.ndarray:
-
-    weight_counts = [0 for _ in range(weights.shape[1])]
-    absolute_weights = np.abs(weights)
-    number_weights = weights.shape[1]
-    if k > number_weights:
-        k = int(number_weights / 2)
-    for example_idx in range(absolute_weights.shape[0]):
-        example_weights = absolute_weights[example_idx, :]
-        example_weight_ranks = rankdata(example_weights, method='min')
-        for weight_example_index in range(number_weights):
-            if example_weight_ranks[weight_example_index] > number_weights - k:
-                weight_counts[weight_example_index] += 1
-    weight_counts = np.array(weight_counts)
-    weight_importances = weight_counts / sum(weight_counts)
-
-    return weight_importances

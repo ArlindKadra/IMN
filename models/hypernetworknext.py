@@ -24,14 +24,13 @@ class HyperNet(nn.Module):
         self.input_layer = nn.Linear(nr_features, hidden_size)
         for level_index in range(self.nr_levels):
             module_list = nn.ModuleList()
-            for i in range(cardinality):
+            for _ in range(cardinality):
                 module_list.append(self.make_residual_block(self.hidden_size, self.hidden_size))
             setattr(self, f'level_{level_index}', module_list)
 
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
         self.nr_features = nr_features
         self.nr_classes = nr_classes
-
 
     def forward(self, x, return_weights: bool = False):
 
@@ -41,7 +40,6 @@ class HyperNet(nn.Module):
         x = self.input_layer(x)
         x = self.batch_norm(x)
         x = self.act_func(x)
-
 
         for i in range(self.nr_levels):
             residual = x.clone().detach()
@@ -62,9 +60,24 @@ class HyperNet(nn.Module):
         else:
             return x
 
+    def make_residual_block(
+        self,
+        in_features: int,
+        output_features: int,
+    ) -> nn.Sequential:
+        """Creates a residual block.
 
-    def make_residual_block(self, in_features, output_features):
+        Args:
+            in_features: int
+                Number of input features to the first
+                layer of the residual block.
+            output_features: Number of output features
+                for the last layer of the residual block.
 
+        Returns:
+            nn.Sequential
+                A residual block.
+        """
         lower_embedding = int(output_features / self.cardinality)
         return nn.Sequential(
             nn.Linear(in_features, lower_embedding),
@@ -76,5 +89,3 @@ class HyperNet(nn.Module):
             nn.Linear(lower_embedding, output_features),
             nn.BatchNorm1d(output_features),
         )
-        
-
