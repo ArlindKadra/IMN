@@ -1,13 +1,11 @@
-import copy
 import math
 
 import torch
-import numpy as np
-
-
 import matplotlib
+import matplotlib.pyplot as plt
 matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+
+import numpy as np
 import seaborn as sns
 sns.set_style('white')
 
@@ -28,16 +26,14 @@ sns.set(
     style="white"
 )
 
-import matplotlib.pyplot as plt
+
 from models.hypernetwork import HyperNet
-from models.tabresnet import TabResNet
-from torcheval.metrics.functional import binary_auroc, binary_accuracy
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import make_moons
+from torcheval.metrics.functional import binary_auroc, binary_accuracy
+
 first_feature = np.arange(0, 15, 0.5)
 y = [math.sin(point) for point in first_feature]
-from utils import generate_weight_importances_top_k
 
 #plt.plot(first_feature, y)
 #plt.xlabel('x1')
