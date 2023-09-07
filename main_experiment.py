@@ -3,15 +3,16 @@ import json
 import os
 import time
 
-import torch
 import numpy as np
+from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
+import torch
 import wandb
 
 from models.model import Classifier
 from utils import get_dataset
-from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
 
-def main(args: argparse.Namespace) -> None:
+
+def main(args: argparse.Namespace):
 
     dev = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -91,7 +92,6 @@ def main(args: argparse.Namespace) -> None:
     )
 
     wandb.config['dataset_name'] = dataset_name
-
     model.fit(X_train, y_train)
     if interpretable:
         test_predictions, weight_importances = model.predict(X_test, y_test)
@@ -234,8 +234,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=1,
-        help="Weight decay",
+        default=0,
+        help="Weight norm",
     )
     parser.add_argument(
         "--scheduler_t_mult",
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
+        default=41165,
         help='Dataset id',
     )
     parser.add_argument(

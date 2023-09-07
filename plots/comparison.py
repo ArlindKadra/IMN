@@ -2,6 +2,7 @@ import json
 import os
 
 import matplotlib.pyplot as plt
+import openml
 
 import seaborn as sns
 
@@ -259,6 +260,87 @@ def calculate_method_times(output_dir: str, method_names: list):
     print(f'Mean slow down: {np.mean(slow_down)}')
     print(f'Std slow down: {np.std(slow_down)}')
 
+def prepare_result_table(output_dir: str, method_names: list, mode='test'):
+
+    pretty_method_names = {
+        'inn': 'INN',
+        'inn_v2': 'INN 2',
+        'random_forest': 'R. Forest',
+        'catboost': 'CatBoost',
+        'tabresnet': 'TabResNet',
+        'decision_tree': 'Decision Tree',
+        'logistic_regression': 'Logistic Regression',
+        'tabnet': 'TabNet',
+    }
+    method_results = []
+    for method_name in method_names:
+        method_results.append(prepare_method_results(output_dir, method_name))
+
+    if mode == 'test':
+        result_metric = 'test_auroc'
+    else:
+        result_metric = 'train_auroc'
+
+    dataset_ids = method_results[-1]['dataset_id']
+
+    method_info = {
+        'dataset_id': [],
+        'decision_tree': [],
+        'logistic_regression': [],
+        'random_forest': [],
+        'tabnet': [],
+        'tabresnet': [],
+        'catboost': [],
+        'inn': [],
+    }
+    for dataset_id in dataset_ids:
+        method_info['dataset_id'].append(int(dataset_id))
+        for method_name, method_result in zip(method_names, method_results):
+            if dataset_id not in method_result['dataset_id'].values:
+                method_info[method_name].append(-1)
+            else:
+                method_info[method_name].append(method_result[method_result['dataset_id'] == dataset_id][result_metric].values[0])
+
+
+    df_results = pd.DataFrame.from_dict(method_info)
+    # sort rows by dataset id
+    df_results = df_results.sort_values(by='dataset_id')
+    print(df_results.to_latex(index=False, float_format="%.3f"))
+
+    dataset_info_dict = {
+        'Dataset ID': [],
+        'Dataset Name': [],
+        'Number of Instances': [],
+        'Number of Features': [],
+        'Number of Classes': [],
+        'Majority Class Percentage': [],
+        'Minority Class Percentage': [],
+    }
+    for dataset_id in dataset_ids:
+        dataset = openml.datasets.get_dataset(int(dataset_id), download_data=False)
+        number_of_instances = dataset.qualities['NumberOfInstances']
+        number_of_features = dataset.qualities['NumberOfFeatures']
+        majority_class_percentage = dataset.qualities['MajorityClassPercentage']
+        minority_class_percentage = dataset.qualities['MinorityClassPercentage']
+        number_of_classes = dataset.qualities['NumberOfClasses']
+
+        dataset_info_dict['Dataset ID'].append(int(dataset_id))
+        dataset_info_dict['Dataset Name'].append(dataset.name)
+        dataset_info_dict['Number of Instances'].append(int(number_of_instances))
+        dataset_info_dict['Number of Features'].append(int(number_of_features))
+        dataset_info_dict['Number of Classes'].append(int(number_of_classes))
+        dataset_info_dict['Majority Class Percentage'].append(majority_class_percentage)
+        dataset_info_dict['Minority Class Percentage'].append(minority_class_percentage)
+
+    print(max(dataset_info_dict['Number of Instances']))
+    print(min(dataset_info_dict['Number of Instances']))
+    print(max(dataset_info_dict['Number of Features']))
+    print(min(dataset_info_dict['Number of Features']))
+    print(len(dataset_info_dict['Number of Classes']))
+    df_dataset_info = pd.DataFrame.from_dict(dataset_info_dict)
+    df_dataset_info = df_dataset_info.sort_values(by='Dataset ID')
+    print(df_dataset_info.to_latex(index=False, float_format="%.3f"))
+
 result_directory = os.path.expanduser(
     os.path.join(
         '~',
@@ -267,9 +349,11 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['inn', 'tabresnet', 'tabnet', 'random_forest', 'catboost']
+method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'tabresnet', 'inn']
 #rank_methods(result_directory, method_names)
-prepare_cd_data(result_directory, method_names)
+#prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
 #distribution_methods(result_directory, method_names)
 #calculate_method_times(result_directory, method_names)
+
+prepare_result_table(result_directory, method_names, mode='train')

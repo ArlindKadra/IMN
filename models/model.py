@@ -5,7 +5,8 @@ import time
 import torch
 import numpy as np
 import pandas as pd
-from models.hypernetwork import HyperNet
+#from models.hypernetwork import HyperNet
+from models.dt_hypernetwork import DTHyperNet
 from models.tabresnet import TabResNet
 
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
@@ -34,7 +35,7 @@ class Classifier():
         self.disable_wandb = disable_wandb
         algorithm_backbone = {
             'tabresnet': TabResNet,
-            'inn': HyperNet,
+            'inn': DTHyperNet,
         }
         self.nr_classes = network_configuration['nr_classes'] if network_configuration['nr_classes'] != 1 else 2
         if model_name == 'inn':
@@ -135,6 +136,8 @@ class Classifier():
                     if self.interpretable:
                         output, weights = self.model(x, return_weights=True)
                     else:
+                        if epoch == 99:
+                            bla = 6
                         output = self.model(x)
 
                     if self.nr_classes == 2:
@@ -157,10 +160,10 @@ class Classifier():
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
                 if self.interpretable:
                     # take all values except the last one (bias)
-                    if self.nr_classes > 2:
-                        weights = torch.squeeze(weights)
-                    else:
-                        weights = torch.squeeze(weights, dim=2)
+                    #if self.nr_classes > 2:
+                    #    weights = torch.squeeze(weights)
+                    #else:
+                    #    weights = torch.squeeze(weights, dim=2)
 
                     weights = torch.abs(weights)
                     l1_loss = torch.mean(torch.flatten(weights))
@@ -242,7 +245,7 @@ class Classifier():
                 weights = weights[-1, :, :]
                 weights = np.squeeze(weights)
 
-            weights = weights[:, :-1]
+            #weights = weights[:, :-1]
             if self.mode == 'classification':
                 if self.nr_classes == 2:
                     act_predictions = (predictions > 0.5).astype(int)
@@ -254,10 +257,10 @@ class Classifier():
                 for test_example_idx in range(weights.shape[0]):
                     # select the weights for the predicted class
                     if y_test[test_example_idx] == act_predictions[test_example_idx]:
-                        if self.nr_classes > 2:
-                            selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
-                        else:
-                            selected_weights.append(weights[test_example_idx, :])
+                        #if self.nr_classes > 2:
+                        #    selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
+                        #else:
+                        selected_weights.append(weights[test_example_idx, :])
                         correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
                 correct_test_examples = np.array(correct_test_examples)
