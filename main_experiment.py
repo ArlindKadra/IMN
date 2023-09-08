@@ -214,6 +214,12 @@ if __name__ == "__main__":
         help="Batch size",
     )
     parser.add_argument(
+        '--tree_depth',
+        type=int,
+        default=2,
+        help='The depth of the tree.',
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=0.01,
@@ -252,7 +258,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=41165,
+        default=24,
         help='Dataset id',
     )
     parser.add_argument(
