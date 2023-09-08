@@ -78,7 +78,7 @@ class DTHyperNet(nn.Module):
         leaf_node_contribs = []
         for leaf_node_index in range(0, self.nr_leaf_nodes):
             leaf_node = leaf_outputs[leaf_node_index]
-            coefficient = torch.ones(leaf_node.size())
+            coefficient = torch.ones(leaf_node.size(), device=x.device)
             for depth_index in range(0, self.tree_depth):
                 index_of_node = int((2 ** (depth_index - 1) * (2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
                 p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)

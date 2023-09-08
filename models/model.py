@@ -136,8 +136,6 @@ class Classifier():
                     if self.interpretable:
                         output, weights = self.model(x, return_weights=True)
                     else:
-                        if epoch == 99:
-                            bla = 6
                         output = self.model(x)
 
                     if self.nr_classes == 2:
