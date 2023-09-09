@@ -60,27 +60,20 @@ class DTHyperNet(nn.Module):
         feature_splits = torch.split(feature_splits, self.nr_features, dim=1)
         leaf_node_classes = torch.split(leaf_node_classes, self.nr_classes, dim=1)
 
-        leaf_outputs = []
-        for individual_leaf_classes in leaf_node_classes:
-            leaf_outputs.append(individual_leaf_classes)
         #first_leaf_output = leaf_node_classes[0]
         #second_leaf_output = leaf_node_classes[1]
         #third_leaf_output = leaf_node_classes[2]
         #fourth_leaf_output = leaf_node_classes[3]
 
-        feature_probabilities = []
-        for node_feature_importances in feature_importances:
-            feature_probabilities.append(torch.softmax(node_feature_importances, dim=1))
         #first_part_feature_importance = torch.softmax(feature_importances[0], dim=1)
         #second_part_feature_importance = torch.softmax(feature_importances[1], dim=1)
         #third_part_feature_importance = torch.softmax(feature_importances[2], dim=1)
-
         leaf_node_contribs = []
         for leaf_node_index in range(0, self.nr_leaf_nodes):
             if self.nr_classes == 1:
-                leaf_node = torch.sigmoid(leaf_outputs[leaf_node_index])
+                leaf_node = torch.sigmoid(leaf_node_classes[leaf_node_index])
             else:
-                leaf_node = torch.softmax(leaf_outputs[leaf_node_index], dim=1)
+                leaf_node = torch.softmax(leaf_node_classes[leaf_node_index], dim=1)
 
             coefficient = torch.ones(leaf_node.size(), device=x.device)
             for depth_index in range(0, self.tree_depth):
@@ -92,10 +85,11 @@ class DTHyperNet(nn.Module):
                 else:
                     # get the max index of each row of the softmaxed feature importances
                     max_indices = torch.argmax(softmaxed_feature_importances, dim=1).unsqueeze(1)
-                    feature_value = softmaxed_feature_importances[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()] * input[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
-                    feature_split = softmaxed_feature_importances[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()] * feature_splits[index_of_node][torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
+                    feature_value = input[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
+                    feature_split = feature_splits[index_of_node][torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
                     node_sd = torch.sigmoid(feature_value * feature_split)
-                    # get the max value of each row of the softmaxed feature importances
+                    # threshold
+                    node_sd = torch.where(node_sd > 0.5, torch.ones_like(node_sd), torch.zeros_like(node_sd))
 
                 coefficient *= node_sd[:, None] * (1 - p) + (1 - node_sd)[:, None] * p
             leaf_node_contribs.append(leaf_node * coefficient)
@@ -128,10 +122,7 @@ class DTHyperNet(nn.Module):
         #feature_importances = first_part_feature_importance + second_part_feature_importance + third_part_feature_importance
 
         output = sum(leaf_node_contribs)
-        if self.nr_classes > 1:
-            output = output / torch.sum(output, dim=1).unsqueeze(1)
-        else:
-            output = torch.clip(output, 0, 1)
+        output = torch.clip(output, 0, 1)
         softmaxed_feature_importances = []
         for i in range(0, self.nr_nodes):
             softmaxed_feature_importances.append(torch.softmax(feature_importances[i], dim=1))

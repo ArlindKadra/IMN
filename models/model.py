@@ -96,7 +96,10 @@ class Classifier():
 
         if self.mode == 'classification':
             if self.nr_classes > 2:
-                criterion = torch.nn.NLLLoss()
+                def CrossEntropySoftmax(probs, labels):
+                    loss = -torch.log(probs.gather(1, labels.view(-1, 1))).mean()
+                    return loss
+                criterion = CrossEntropySoftmax
             else:
                 criterion = torch.nn.BCELoss()
         else:
@@ -178,6 +181,7 @@ class Classifier():
                     predictions = (self.sigmoid_act_func(output) > 0.5).int()
                 else:
                     predictions = torch.argmax(output, dim=1)
+
 
                 # calculate balanced accuracy with pytorch
                 if self.nr_classes == 2:
