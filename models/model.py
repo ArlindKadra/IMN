@@ -96,9 +96,9 @@ class Classifier():
 
         if self.mode == 'classification':
             if self.nr_classes > 2:
-                criterion = torch.nn.CrossEntropyLoss()
+                criterion = torch.nn.NLLLoss()
             else:
-                criterion = torch.nn.BCEWithLogitsLoss()
+                criterion = torch.nn.BCELoss()
         else:
             criterion = torch.nn.MSELoss()
 
@@ -218,15 +218,16 @@ class Classifier():
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
-                output, model_weights = self.model(X_test, return_weights=True)
+                output, model_weights = self.model(X_test, return_weights=True, discretize=False)
             else:
                 output = self.model(X_test)
             output = output.squeeze(1)
             if self.mode == 'classification':
-                if self.nr_classes > 2:
-                    output = self.softmax_act_func(output)
-                else:
-                    output = self.sigmoid_act_func(output)
+                pass
+                #if self.nr_classes > 2:
+                #    output = self.softmax_act_func(output)
+                #else:
+                #    output = self.sigmoid_act_func(output)
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:

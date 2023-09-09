@@ -282,7 +282,8 @@ def preprocess_dataset(
         if nr_classes > 2:
             categorical_preprocessor = (
                 'categorical_encoder',
-                OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values, drop='if_binary'),
+                #OneHotEncoder(handle_unknown='ignore', sparse=False, categories=column_category_values, drop='if_binary'),
+                OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, categories=column_category_values),
                 categorical_features,
             )
         else:

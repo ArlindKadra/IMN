@@ -187,6 +187,7 @@ def prepare_cd_data(output_dir: str, method_names: list):
         'decision_tree': 'Decision Tree',
         'logistic_regression': 'Logistic Regression',
         'tabnet': 'TabNet',
+        'inn_dtree': 'INDTree',
     }
     method_results = {}
     for method_name in method_names:
