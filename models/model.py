@@ -96,12 +96,9 @@ class Classifier():
 
         if self.mode == 'classification':
             if self.nr_classes > 2:
-                def CrossEntropySoftmax(probs, labels):
-                    loss = -torch.log(probs.gather(1, labels.view(-1, 1))).mean()
-                    return loss
-                criterion = CrossEntropySoftmax
+                criterion = torch.nn.CrossEntropyLoss()
             else:
-                criterion = torch.nn.BCELoss()
+                criterion = torch.nn.BCEWithLogitsLoss()
         else:
             criterion = torch.nn.MSELoss()
 
@@ -159,6 +156,7 @@ class Classifier():
                         output_adv = output_adv.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
+
                 if self.interpretable:
                     # take all values except the last one (bias)
                     #if self.nr_classes > 2:
@@ -185,6 +183,7 @@ class Classifier():
 
                 # calculate balanced accuracy with pytorch
                 if self.nr_classes == 2:
+                    min_value = torch.amin(output)
                     batch_auroc = binary_auroc(output, y)
                 else:
                     batch_auroc = multiclass_auroc(output, y, num_classes=self.nr_classes)
@@ -222,16 +221,15 @@ class Classifier():
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
-                output, model_weights = self.model(X_test, return_weights=True, discretize=False)
+                output, model_weights = self.model(X_test, return_weights=True)
             else:
                 output = self.model(X_test)
             output = output.squeeze(1)
             if self.mode == 'classification':
-                pass
-                #if self.nr_classes > 2:
-                #    output = self.softmax_act_func(output)
-                #else:
-                #    output = self.sigmoid_act_func(output)
+                if self.nr_classes > 2:
+                    output = self.softmax_act_func(output)
+                else:
+                    output = self.sigmoid_act_func(output)
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:

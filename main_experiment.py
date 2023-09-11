@@ -111,8 +111,6 @@ def main(args: argparse.Namespace):
             train_auroc = roc_auc_score(y_train, train_predictions)
         else:
             # normalize the predictions
-            test_predictions = test_predictions / np.sum(test_predictions, axis=1, keepdims=True)
-            train_predictions = train_predictions / np.sum(train_predictions, axis=1, keepdims=True)
             test_auroc = roc_auc_score(y_test, test_predictions, multi_class="ovo")
             train_auroc = roc_auc_score(y_train, train_predictions, multi_class="ovo")
 
@@ -261,7 +259,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=12,
+        default=3,
         help='Dataset id',
     )
     parser.add_argument(

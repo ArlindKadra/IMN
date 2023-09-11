@@ -21,7 +21,6 @@ class DTHyperNet(nn.Module):
         self.nr_features = nr_features
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
-        self.second_head = nn.Linear(hidden_size, nr_classes)
         self.tree_depth = tree_depth
         self.nr_nodes = (2 ** self.tree_depth) - 1
         self.nr_leaf_nodes = 2 ** self.tree_depth
@@ -60,69 +59,31 @@ class DTHyperNet(nn.Module):
         feature_splits = torch.split(feature_splits, self.nr_features, dim=1)
         leaf_node_classes = torch.split(leaf_node_classes, self.nr_classes, dim=1)
 
-        #first_leaf_output = leaf_node_classes[0]
-        #second_leaf_output = leaf_node_classes[1]
-        #third_leaf_output = leaf_node_classes[2]
-        #fourth_leaf_output = leaf_node_classes[3]
-
-        #first_part_feature_importance = torch.softmax(feature_importances[0], dim=1)
-        #second_part_feature_importance = torch.softmax(feature_importances[1], dim=1)
-        #third_part_feature_importance = torch.softmax(feature_importances[2], dim=1)
         leaf_node_contribs = []
         for leaf_node_index in range(0, self.nr_leaf_nodes):
-            if self.nr_classes == 1:
-                leaf_node = torch.sigmoid(leaf_node_classes[leaf_node_index])
-            else:
-                leaf_node = torch.softmax(leaf_node_classes[leaf_node_index], dim=1)
 
-            coefficient = torch.ones(leaf_node.size(), device=x.device)
-            for depth_index in range(0, self.tree_depth):
+            coefficient = torch.ones(leaf_node_classes[leaf_node_index].size(), device=x.device)
+            for depth_index in range(1, self.tree_depth + 1):
                 index_of_node = int((2 ** (depth_index - 1) * (2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
                 p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)
                 softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
                 if not discretize:
-                    node_sd = torch.sigmoid(torch.sum(softmaxed_feature_importances * input, dim=1) - torch.sum(softmaxed_feature_importances * feature_splits[index_of_node], dim=1))
+                    node_sd = torch.sigmoid(torch.sub(torch.sum(softmaxed_feature_importances * input, dim=1), torch.sum(softmaxed_feature_importances * feature_splits[index_of_node], dim=1)))
                 else:
                     # get the max index of each row of the softmaxed feature importances
                     max_indices = torch.argmax(softmaxed_feature_importances, dim=1).unsqueeze(1)
                     feature_value = input[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
                     feature_split = feature_splits[index_of_node][torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
-                    node_sd = torch.sigmoid(feature_value * feature_split)
+                    node_sd = torch.sub(feature_value, feature_split)
+                    node_sd = torch.sigmoid(node_sd)
                     # threshold
                     node_sd = torch.where(node_sd > 0.5, torch.ones_like(node_sd), torch.zeros_like(node_sd))
 
                 coefficient *= node_sd[:, None] * (1 - p) + (1 - node_sd)[:, None] * p
-            leaf_node_contribs.append(leaf_node * coefficient)
-
-        #first_node_first_part = first_part_feature_importance * input
-        #first_node_second_part = first_part_feature_importance * feature_splits[0]
-        #second_node_first_part = second_part_feature_importance * input
-        #second_node_second_part = second_part_feature_importance * feature_splits[1]
-        #third_node_first_part = third_part_feature_importance * input
-        #third_node_second_part = third_part_feature_importance * feature_splits[2]
-        #first_node_first_part = torch.sum(first_node_first_part, dim=1)
-        #first_node_second_part = torch.sum(first_node_second_part, dim=1)
-        #second_node_first_part = torch.sum(second_node_first_part, dim=1)
-        #second_node_second_part = torch.sum(second_node_second_part, dim=1)
-        #third_node_first_part = torch.sum(third_node_first_part, dim=1)
-        #third_node_second_part = torch.sum(third_node_second_part, dim=1)
-
-        #first_node = self.sigmoid_func(first_node_first_part - first_node_second_part)
-        #second_node = self.sigmoid_func(second_node_first_part - second_node_second_part)
-        #third_node = self.sigmoid_func(third_node_first_part - third_node_second_part)
-
-        #first_node = torch.amax(first_node, dim=1)
-        #second_node = torch.amax(second_node, dim=1)
-        #third_node = torch.amax(third_node, dim=1)
-
-        #output = first_leaf_output * first_node[:, None] * second_node[:, None]
-        #output += second_leaf_output * first_node[:, None] * (1 - second_node)[:, None]
-        #output += third_leaf_output * (1 - first_node)[:, None] * third_node[:, None]
-        #output += fourth_leaf_output * (1 - first_node)[:, None] * (1 - third_node)[:, None]
-        #feature_importances = first_part_feature_importance + second_part_feature_importance + third_part_feature_importance
+            leaf_node_contribs.append(leaf_node_classes[leaf_node_index] * coefficient)
 
         output = sum(leaf_node_contribs)
-        output = torch.clip(output, 0, 1)
+
         softmaxed_feature_importances = []
         for i in range(0, self.nr_nodes):
             softmaxed_feature_importances.append(torch.softmax(feature_importances[i], dim=1))
