@@ -241,7 +241,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0,
+        default=10,
         help="Weight norm",
     )
     parser.add_argument(
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=3,
+        default=1590,
         help='Dataset id',
     )
     parser.add_argument(

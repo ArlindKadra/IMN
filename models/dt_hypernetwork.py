@@ -40,6 +40,8 @@ class DTHyperNet(nn.Module):
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
+
+
     def forward(self, x, return_weights: bool = False, discretize: bool = False):
 
         x = x.view(-1, self.nr_features)
@@ -86,7 +88,7 @@ class DTHyperNet(nn.Module):
 
         softmaxed_feature_importances = []
         for i in range(0, self.nr_nodes):
-            softmaxed_feature_importances.append(torch.softmax(feature_importances[i], dim=1))
+            softmaxed_feature_importances.append(feature_importances[i])
 
         feature_importances = sum(softmaxed_feature_importances)
 

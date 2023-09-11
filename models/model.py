@@ -183,7 +183,6 @@ class Classifier():
 
                 # calculate balanced accuracy with pytorch
                 if self.nr_classes == 2:
-                    min_value = torch.amin(output)
                     batch_auroc = binary_auroc(output, y)
                 else:
                     batch_auroc = multiclass_auroc(output, y, num_classes=self.nr_classes)
@@ -221,7 +220,7 @@ class Classifier():
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
-                output, model_weights = self.model(X_test, return_weights=True)
+                output, model_weights = self.model(X_test, return_weights=True, discretize=False)
             else:
                 output = self.model(X_test)
             output = output.squeeze(1)
