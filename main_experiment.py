@@ -208,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=200,
+        default=10,
         help="Number of epochs",
     )
     parser.add_argument(
