@@ -93,9 +93,10 @@ def main(args: argparse.Namespace):
 
     wandb.config['dataset_name'] = dataset_name
     model.fit(X_train, y_train)
+
     if interpretable:
-        test_predictions, weight_importances = model.predict(X_test, y_test)
-        train_predictions, _ = model.predict(X_train, y_train)
+        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)
+        train_predictions, _ = model.predict(X_train, y_train, return_weights=True)
     else:
         test_predictions = model.predict(X_test, y_test)
         train_predictions = model.predict(X_train, y_test)
@@ -170,15 +171,17 @@ def main(args: argparse.Namespace):
     """
     if interpretable:
         # print attribute name and weight for the top 10 features
+        # average the weight_importances
+        weight_importances = np.mean(weight_importances, axis=0)
         sorted_idx = np.argsort(weight_importances)[::-1]
-        top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
+        top_10_features = [attribute_names[i] for i in sorted_idx]
         print("Top 10 features: %s" % top_10_features)
         # print the weights of the top 10 features
-        print(weight_importances[sorted_idx[:10]])
+        print(weight_importances[sorted_idx])
         wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx[:10]]
+        wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
         output_info['top_10_features'] = top_10_features
-        output_info['top_10_features_weights'] = weight_importances[sorted_idx[:10]].tolist()
+        output_info['top_10_features_weights'] = weight_importances[sorted_idx].tolist()
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
@@ -205,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=200,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -241,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=10,
+        default=0,
         help="Weight norm",
     )
     parser.add_argument(
@@ -259,7 +262,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=1590,
+        default=31,
         help='Dataset id',
     )
     parser.add_argument(

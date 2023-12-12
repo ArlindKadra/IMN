@@ -30,6 +30,7 @@ sns.set(
 
 import matplotlib.pyplot as plt
 from models.hypernetwork import HyperNet
+from models.dt_hypernetwork import DTHyperNet
 from models.tabresnet import TabResNet
 from torcheval.metrics.functional import binary_auroc, binary_accuracy
 from sklearn.model_selection import train_test_split
@@ -126,7 +127,7 @@ train_dataset = torch.utils.data.TensorDataset(
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-hypernet = HyperNet(
+hypernet = DTHyperNet(
     nr_features=X_train.size(1),
     nr_classes=1,
     nr_blocks=2,
@@ -135,7 +136,7 @@ hypernet = HyperNet(
 
 criterion = torch.nn.BCEWithLogitsLoss()
 second_criterion = torch.nn.MSELoss()
-optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.001)
+optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=1)
 nr_epochs = 100
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs)
 hypernet.train()
@@ -148,8 +149,8 @@ for epoch in range(nr_epochs):
         optimizer.zero_grad()
         output, weights = hypernet(x, return_weights=True)
         output = output.squeeze()
-        weights = torch.squeeze(weights, dim=2)
-        weights = weights[:, :-1]
+        #weights = torch.squeeze(weights, dim=2)
+        #weights = weights[:, :-1]
         l1_loss = torch.norm(weights, 1)
         main_loss = criterion(output, y)
         loss = main_loss #+ (weight_norm * l1_loss)
@@ -214,7 +215,7 @@ for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100
     output_list = []
     points = []
     for second_feature in np.linspace(min_second_feature, max_second_feature, 100):
-        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'))
+        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'), discretize=True)
         output = output.squeeze()
         output = output.detach().cpu().numpy()
         output_list.append(output)
@@ -251,11 +252,12 @@ for index, example in enumerate(chosen_examples):
     example_weights = weights[1]
     first_weight = example_weights[0]
     second_weight = example_weights[1]
-    bias_feature = example_weights[2]
+    #bias_feature = example_weights[2]
     first_feature = example[0]
     second_feature = example[1]
     first_part_line = np.arange(-1.5, 2.5, 0.1)
-    second_part_line = [((first_weight * first_element) + bias_feature) / (-1 * second_weight) for first_element in first_part_line]
+    #second_part_line = [((first_weight * first_element) + bias_feature) / (-1 * second_weight) for first_element in first_part_line]
+    second_part_line = [((first_weight * first_element)) / (-1 * second_weight) for first_element in first_part_line]
     refined_first_part_line = []
     refined_second_part_line = []
     for i in range(len(first_part_line)):

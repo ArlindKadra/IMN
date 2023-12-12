@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from models.transformer import SetTransformer
 class DTHyperNet(nn.Module):
     def __init__(
             self,
@@ -12,12 +13,13 @@ class DTHyperNet(nn.Module):
             **kwargs,
     ):
         super(DTHyperNet, self).__init__()
+        self.sigmoid_func = torch.nn.Sigmoid()
+        #self.set_transformer = SetTransformer(dim_input=nr_features, num_outputs=1, dim_output=nr_features, num_heads=4, ln=False)
         self.nr_blocks = nr_blocks
         self.hidden_size = hidden_size
         self.blocks = nn.ModuleList()
         self.batch_norm = nn.BatchNorm1d(self.hidden_size)
-        self.act_func = torch.nn.GELU()
-        self.sigmoid_func = torch.nn.Sigmoid()
+        self.act_func = torch.nn.ReLU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
@@ -31,6 +33,10 @@ class DTHyperNet(nn.Module):
         self.feature_splits = nn.Linear(hidden_size, self.nr_nodes * nr_features)
         self.leaf_node_classes = nn.Linear(hidden_size, self.nr_leaf_nodes * nr_classes)
 
+        #torch.nn.init.xavier_uniform_(self.feature_importances.weight)
+        #torch.nn.init.xavier_uniform_(self.feature_splits.weight)
+        #torch.nn.init.xavier_uniform_(self.leaf_node_classes.weight)
+
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
@@ -42,10 +48,75 @@ class DTHyperNet(nn.Module):
 
 
 
-    def forward(self, x, return_weights: bool = False, discretize: bool = False):
+    def calculate_predictions(
+        self,
+        x,
+        feature_importances,
+        feature_splits,
+        leaf_node_classes,
+        discretize: bool = False,
+        return_tree: bool = False,
+    ):
+
+        leaf_node_contribs = []
+
+        tree_features = []
+        tree_splits = []
+        """
+        if discretize and return_tree:
+            for feature_importance, feature_split in zip(feature_importances, feature_splits):
+                softmaxed_feature_importance = self.act_func(feature_importance)
+                max_indices = torch.argmax(softmaxed_feature_importance, dim=1).unsqueeze(1)
+                #feature_value = x[torch.arange(softmaxed_feature_importance.size(0)), max_indices.squeeze()]
+                #feature_split = feature_split[torch.arange(softmaxed_feature_importance.size(0)), max_indices.squeeze()]
+                #tree_features.append(max_indices)
+                #tree_splits.append(feature_split)
+
+        """
+        for leaf_node_index in range(0, self.nr_leaf_nodes):
+
+            coefficient = torch.ones(leaf_node_classes[leaf_node_index].size(), device=x.device)
+            for depth_index in range(1, self.tree_depth + 1):
+                index_of_node = int((2 ** (depth_index - 1) * (
+                            2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
+                p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)
+                #softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
+                softmaxed_feature_importances = self.act_func(feature_importances[index_of_node])
+
+                if not discretize:
+                    node_sd = torch.sigmoid(torch.sum(softmaxed_feature_importances * x, dim=1) - torch.sum(
+                        softmaxed_feature_importances * feature_splits[index_of_node], dim=1))
+                else:
+                    # get the max index of each row of the softmaxed feature importances
+                    max_indices = torch.argmax(softmaxed_feature_importances, dim=1).unsqueeze(1)
+                    feature_value = x[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
+                    feature_split = feature_splits[index_of_node][
+                        torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
+                    node_sd = torch.sub(feature_value, feature_split)
+                    node_sd = torch.sigmoid(node_sd)
+                    # threshold
+                    node_sd = torch.where(node_sd > 0.5, torch.ones_like(node_sd), torch.zeros_like(node_sd))
+
+                node_sd = node_sd.view(-1, 1)
+                coefficient *= node_sd * (1 - p) + (1 - node_sd) * p
+
+            leaf_node_contribs.append(leaf_node_classes[leaf_node_index] * coefficient)
+
+        output = sum(leaf_node_contribs)
+
+        return output
+
+    def forward(
+        self,
+        x,
+        return_weights: bool = False,
+        discretize: bool = False,
+        return_tree: bool = False,
+    ):
 
         x = x.view(-1, self.nr_features)
-        input = x
+
+        initial_input = x
 
         x = self.input_layer(x)
         x = self.batch_norm(x)
@@ -56,44 +127,35 @@ class DTHyperNet(nn.Module):
 
         feature_importances = self.feature_importances(x)
         feature_splits = self.feature_splits(x)
+        feature_splits = self.sigmoid_func(feature_splits)
         leaf_node_classes = self.leaf_node_classes(x)
         feature_importances = torch.split(feature_importances, self.nr_features, dim=1)
         feature_splits = torch.split(feature_splits, self.nr_features, dim=1)
         leaf_node_classes = torch.split(leaf_node_classes, self.nr_classes, dim=1)
 
-        leaf_node_contribs = []
-        for leaf_node_index in range(0, self.nr_leaf_nodes):
-
-            coefficient = torch.ones(leaf_node_classes[leaf_node_index].size(), device=x.device)
-            for depth_index in range(1, self.tree_depth + 1):
-                index_of_node = int((2 ** (depth_index - 1) * (2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
-                p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)
-                softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
-                if not discretize:
-                    node_sd = torch.sigmoid(torch.sub(torch.sum(softmaxed_feature_importances * input, dim=1), torch.sum(softmaxed_feature_importances * feature_splits[index_of_node], dim=1)))
-                else:
-                    # get the max index of each row of the softmaxed feature importances
-                    max_indices = torch.argmax(softmaxed_feature_importances, dim=1).unsqueeze(1)
-                    feature_value = input[torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
-                    feature_split = feature_splits[index_of_node][torch.arange(softmaxed_feature_importances.size(0)), max_indices.squeeze()]
-                    node_sd = torch.sub(feature_value, feature_split)
-                    node_sd = torch.sigmoid(node_sd)
-                    # threshold
-                    node_sd = torch.where(node_sd > 0.5, torch.ones_like(node_sd), torch.zeros_like(node_sd))
-
-                coefficient *= node_sd[:, None] * (1 - p) + (1 - node_sd)[:, None] * p
-            leaf_node_contribs.append(leaf_node_classes[leaf_node_index] * coefficient)
-
-        output = sum(leaf_node_contribs)
+        output = self.calculate_predictions(
+            initial_input,
+            feature_importances,
+            feature_splits,
+            leaf_node_classes,
+            discretize,
+            return_tree,
+        )
 
         softmaxed_feature_importances = []
         for i in range(0, self.nr_nodes):
             softmaxed_feature_importances.append(feature_importances[i])
 
-        feature_importances = sum(softmaxed_feature_importances)
+        softmaxed_feature_importances = sum(softmaxed_feature_importances)
+
+        # calculate the impact on the output of the features by multiplying with the example
+        softmaxed_feature_importances = softmaxed_feature_importances * initial_input
 
         if return_weights:
-            return output, feature_importances
+            if return_tree:
+                return output, softmaxed_feature_importances, (feature_importances, feature_splits, leaf_node_classes)
+            else:
+                return output, softmaxed_feature_importances
         else:
             return output
 

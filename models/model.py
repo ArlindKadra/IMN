@@ -5,9 +5,11 @@ import time
 import torch
 import numpy as np
 import pandas as pd
-#from models.hypernetwork import HyperNet
+from models.hypernetwork import HyperNet
 from models.dt_hypernetwork import DTHyperNet
 from models.tabresnet import TabResNet
+from models.dtree import DTree
+from dataset.neighbor_dataset import ContextDataset
 
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
 from utils import augment_data, generate_weight_importances_top_k
@@ -75,12 +77,15 @@ class Classifier():
         X_train = X_train.to(self.dev)
         y_train = y_train.to(self.dev)
 
+        """
         # Create dataloader for training
         train_dataset = torch.utils.data.TensorDataset(
             X_train,
             y_train,
         )
-
+        """
+        train_dataset = ContextDataset(X_train, y_train)
+        #train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         T_0: int = max(
             ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
@@ -110,6 +115,7 @@ class Classifier():
         iteration = 0
         loss_per_epoch = []
 
+        self.mse_criterion = torch.nn.L1Loss()
         train_auroc_per_epoch = []
         for epoch in range(1, nr_epochs + 1):
 
@@ -118,7 +124,8 @@ class Classifier():
             for batch_idx, batch in enumerate(train_loader):
 
                 iteration += 1
-                x, y = batch
+                x, y, closest_x, closest_y = batch
+                y = y.to(self.dev)
                 self.model.eval()
                 info = augment_data(
                     x,
@@ -134,18 +141,38 @@ class Classifier():
                 if len(info) == 4:
                     x, y_1, y_2, lam = info
                     if self.interpretable:
-                        output, weights = self.model(x, return_weights=True)
+                        self.model.train()
+                        output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
+                        _, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
+                        closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
+                        feature_importances = main_tree[0]
+                        feature_importances = torch.cat(feature_importances, dim=0)
+                        feature_importances = torch.softmax(feature_importances, dim=1)
+                        entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                     else:
-                        output = self.model(x)
+                        pass
+                        #output = self.model(x)
+                        #closest_output = self.model(closest_x)
 
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
+                        closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
+                    main_loss += self.mse_criterion(closest_output, output)
+                    #main_loss += 0.1 * entropy_loss
                 else:
                     x, adversarial_x, y_1, y_2, lam = info
                     if self.interpretable:
-                        output, weights = self.model(x, return_weights=True)
+                        output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        # closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
+                        _, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
+                        closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
+                        feature_importances = main_tree[0]
+                        feature_importances = torch.cat(feature_importances, dim=0)
+                        feature_importances = torch.softmax(feature_importances, dim=1)
+                        entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                         output_adv = self.model(adversarial_x)
                     else:
                         output = self.model(x)
@@ -154,9 +181,11 @@ class Classifier():
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
                         output_adv = output_adv.squeeze(1)
+                        closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
-
+                    main_loss += self.mse_criterion(closest_output, output)
+                    #main_loss += 0.1 * entropy_loss
                 if self.interpretable:
                     # take all values except the last one (bias)
                     #if self.nr_classes > 2:
@@ -166,37 +195,42 @@ class Classifier():
 
                     weights = torch.abs(weights)
                     l1_loss = torch.mean(torch.flatten(weights))
-                    loss = main_loss + (weight_norm * l1_loss)
-                else:
-                    loss = main_loss
+                    if not torch.isnan(l1_loss):
+                        main_loss += weight_norm * l1_loss
 
-                loss.backward()
+                main_loss.backward()
                 optimizer.step()
                 scheduler.step()
 
-                # threshold the predictions if the model is binary
-                if self.nr_classes == 2:
-                    predictions = (self.sigmoid_act_func(output) > 0.5).int()
+                if self.mode == 'classification':
+                    # threshold the predictions if the model is binary
+                    if self.nr_classes == 2:
+                        predictions = (self.sigmoid_act_func(output) > 0.5).int()
+                    else:
+                        predictions = torch.argmax(output, dim=1)
+
+                    # calculate balanced accuracy with pytorch
+                    if self.nr_classes == 2:
+                        batch_auroc = binary_auroc(output, y)
+                    else:
+                        batch_auroc = multiclass_auroc(output, y, num_classes=self.nr_classes)
+
+                    train_auroc += batch_auroc
                 else:
-                    predictions = torch.argmax(output, dim=1)
+                    train_auroc = 0
 
+                loss_value += main_loss.item()
 
-                # calculate balanced accuracy with pytorch
-                if self.nr_classes == 2:
-                    batch_auroc = binary_auroc(output, y)
-                else:
-                    batch_auroc = multiclass_auroc(output, y, num_classes=self.nr_classes)
-
-                loss_value += loss.item()
-                train_auroc += batch_auroc
                 if iteration in ensemble_snapshot_intervals:
                     self.ensemble_snapshots.append(deepcopy(self.model.state_dict()))
 
             loss_value /= len(train_loader)
             train_auroc /= len(train_loader)
+
             print(f'Epoch: {epoch}, Loss: {loss_value}, AUROC: {train_auroc}')
             loss_per_epoch.append(loss_value)
-            train_auroc_per_epoch.append(train_auroc.detach().to('cpu').item())
+            if self.mode == 'classification':
+                train_auroc_per_epoch.append(train_auroc.detach().to('cpu').item())
 
             if not self.disable_wandb:
                 wandb.log({"Train:loss": loss_value, "Train:auroc": train_auroc,
@@ -206,21 +240,38 @@ class Classifier():
 
         return self
 
-    def predict(self, X_test, y_test=None, return_weights=True):
+    def predict(self, X_test, y_test=None, return_weights=False, return_tree=False, discretize=True):
 
         # check if X_test is a DataFrame
         if isinstance(X_test, pd.DataFrame):
             X_test = X_test.to_numpy()
-        X_test = torch.tensor(X_test).float()
-        X_test = X_test.to(self.dev)
 
+        X_test = torch.tensor(X_test).float()
+
+        X_test = X_test.to(self.dev)
+        if y_test is not None:
+            if isinstance(y_test, pd.DataFrame):
+                y_test = y_test.to_numpy()
+            y_test = torch.tensor(y_test).float() if self.nr_classes == 2 else torch.tensor(y_test).long()
+        else:
+            y_test = torch.zeros(X_test.size(0)).long()
+
+        y_test = y_test.to(self.dev)
+        test_dataset = torch.utils.data.TensorDataset(X_test, y_test)
+        #test_dataset = ContextDataset(X_test, y_test)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
         predictions = []
         weights = []
+        for batch in test_loader:
+            X_test, _ = batch
         for snapshot_idx, snapshot in enumerate(self.ensemble_snapshots):
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
-                output, model_weights = self.model(X_test, return_weights=True, discretize=False)
+                if return_tree:
+                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True, discretize=True)
+                else:
+                    output, model_weights = self.model(X_test, return_weights=True, discretize=True)
             else:
                 output = self.model(X_test)
             output = output.squeeze(1)
@@ -235,7 +286,9 @@ class Classifier():
                 weights.append([model_weights.detach().to('cpu').numpy()])
 
         predictions = np.array(predictions)
-        predictions = np.mean(predictions, axis=0)
+        #predictions = np.mean(predictions, axis=0)
+        # take only the last prediction
+        predictions = predictions[-1, :, :]
         predictions = np.squeeze(predictions)
 
         if self.interpretable and return_weights:
@@ -251,7 +304,7 @@ class Classifier():
                     act_predictions = (predictions > 0.5).astype(int)
                 else:
                     act_predictions = np.argmax(predictions, axis=1)
-
+            """
                 selected_weights = []
                 correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
@@ -264,21 +317,25 @@ class Classifier():
                         correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
                 correct_test_examples = np.array(correct_test_examples)
-            weights_importances = generate_weight_importances_top_k(weights, 5)
-            weights_averages = np.mean(weights, axis=0)
+            """
+            #weights_importances = generate_weight_importances_top_k(weights, 5)
+            #weights_averages = np.mean(weights, axis=0)
             # normalize the weights
-            weights_averages = weights_averages / np.sum(weights_averages)
-
-            test_examples = X_test.detach().to('cpu').numpy()
-            correct_test_examples = test_examples[correct_test_examples]
-
-            weights = weights * correct_test_examples
-            weights = np.mean(np.abs(weights), axis=0)
-            weights = weights / np.sum(weights)
+            #weights_averages = weights_averages / np.sum(weights_averages)
+            """
+                test_examples = X_test.detach().to('cpu').numpy()
+                correct_test_examples = test_examples[correct_test_examples]
+                weights = weights * correct_test_examples
+            """
+            #weights = np.mean(np.abs(weights), axis=0)
+            #weights = weights / np.sum(weights)
 
         if self.interpretable:
             if return_weights:
-                return predictions, weights
+                if return_tree:
+                    return predictions, weights, tree
+                else:
+                    return predictions, weights
             else:
                 return predictions
         else:

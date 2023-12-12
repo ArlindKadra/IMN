@@ -1,17 +1,17 @@
 from xaibench import custom_explainers
 
 valid_explainers = {
-    "shap": custom_explainers.Shap,
-    "shapr": custom_explainers.ShapR,
-    "kernelshap": custom_explainers.KernelShap,
-    "brutekernelshap": custom_explainers.BruteForceKernelShap,
-    "random": custom_explainers.Random,
-    "lime": custom_explainers.Lime,
-    "maple": custom_explainers.Maple,
+    #"shap": custom_explainers.Shap,
+    #"shapr": custom_explainers.ShapR,
+    #"kernelshap": custom_explainers.KernelShap,
+    #"brutekernelshap": custom_explainers.BruteForceKernelShap,
+    #"random": custom_explainers.Random,
+    #"lime": custom_explainers.Lime,
+    #"maple": custom_explainers.Maple,
     #"l2x": custom_explainers.L2X,
-    "breakdown": custom_explainers.BreakDown,
+    #"breakdown": custom_explainers.BreakDown,
     "inn": custom_explainers.INNExplainerWrapper,
-    "tabnet": custom_explainers.TabNetExplainerWrapper,
+    #"tabnet": custom_explainers.TabNetExplainerWrapper,
 }
 
 

@@ -19,7 +19,7 @@
     ],
     "explainers": [
         {
-            "name": "tabnet",
+            "name": "inn",
             "expl_kwargs": {}
         }
     ],

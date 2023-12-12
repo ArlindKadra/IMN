@@ -120,13 +120,13 @@ def get_args():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=64,
+        default=512,
         help="Batch size",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.01,
+        default=0.001,
         help="Learning rate",
     )
     parser.add_argument(

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from models.transformer import SetTransformer
 class HyperNet(nn.Module):
     def __init__(
             self,
@@ -11,6 +12,11 @@ class HyperNet(nn.Module):
             **kwargs,
     ):
         super(HyperNet, self).__init__()
+        self.set_transformer = SetTransformer(
+            dim_input=nr_features,
+            num_outputs=1,
+            dim_output=nr_features,
+        )
         self.nr_blocks = nr_blocks
         self.hidden_size = hidden_size
         self.blocks = nn.ModuleList()
@@ -37,8 +43,10 @@ class HyperNet(nn.Module):
 
     def forward(self, x, return_weights: bool = False):
 
-        x = x.view(-1, self.nr_features)
         input = x
+        x = self.set_transformer(x)
+        x = x.squeeze()
+        #x = x.view(-1, self.nr_features)
 
         x = self.input_layer(x)
         x = self.batch_norm(x)
@@ -49,7 +57,7 @@ class HyperNet(nn.Module):
 
         w = self.output_layer(x)
 
-        input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
+        input = torch.cat((input[:, 0, :], torch.ones(input.shape[0], 1).to(x.device)), dim=1)
         w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
 

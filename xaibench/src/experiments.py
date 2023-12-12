@@ -5,9 +5,9 @@ from xaibench.custom_explainers import GroundTruthShap
 from tqdm import tqdm
 import logging
 from sklearn.metrics import accuracy_score, mean_squared_error
-#from models.model import Classifier
+from models.model import Classifier
 
-from pytorch_tabnet.tab_model import TabNetRegressor
+#from pytorch_tabnet.tab_model import TabNetRegressor
 
 class DatasetAsModel():
     def __init__(self, data_class) -> None:
@@ -65,7 +65,7 @@ class Experiment:
                 import torch
                 dev = torch.device(
                     'cuda') if torch.cuda.is_available() else torch.device('cpu')
-                """
+
                 model = Classifier(
                     network_configuration,
                     args=self.args,
@@ -77,11 +77,11 @@ class Experiment:
                     mode=self.args.mode,
                     disable_wandb=True,
                 )
-                """
-                model = TabNetRegressor()
+
+                #model = Classifier()
                 #self.trained_models.append(model.train(X, y.ravel()))
-                #y = y.ravel()
-                model.fit(X, y)
+                y = y.ravel()
+                model = model.fit(X, y)
                 self.trained_models.append(model)
 
         return self.trained_models
@@ -144,7 +144,10 @@ class Experiment:
             train_y, test_y = self.dataset.data[1], self.dataset.val_data[1]
             train_X = train_X.to_numpy()
             test_X = test_X.to_numpy()
+            #train_y = np.squeeze(train_y, axis=1)
+            #test_y = np.squeeze(test_y, axis=1)
             pred = model.predict(train_X)
+
             train_score, test_score = mean_squared_error(model.predict(train_X), train_y), mean_squared_error(model.predict(test_X), test_y)
         else:
             train_X, test_X = self.dataset.data[0], self.dataset.val_data[0]

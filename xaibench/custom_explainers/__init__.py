@@ -7,4 +7,4 @@ from .maple import Maple
 #from .l2x import L2X
 from .breakdown import BreakDown
 from .interpretable_neural_network import INNExplainerWrapper
-from .tabnet_explainer import TabNetExplainerWrapper
+#from .tabnet_explainer import TabNetExplainerWrapper
