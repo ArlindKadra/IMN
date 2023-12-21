@@ -60,6 +60,9 @@ def main(args: argparse.Namespace):
         'hidden_size': args.hidden_size,
     }
 
+    if 'tree_depth' in args:
+        network_configuration['tree_depth'] = args.tree_depth
+
     wandb.init(
         project='INN',
         config=args,
@@ -208,19 +211,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=10,
+        default=100,
         help="Number of epochs",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=64,
+        default=512,
         help="Batch size",
     )
     parser.add_argument(
         '--tree_depth',
         type=int,
-        default=2,
+        default=3,
         help='The depth of the tree.',
     )
     parser.add_argument(
@@ -256,13 +259,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',
         type=int,
-        default=0,
+        default=1,
         help='Random seed',
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=54,
         help='Dataset id',
     )
     parser.add_argument(

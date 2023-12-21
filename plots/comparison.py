@@ -12,8 +12,8 @@ import numpy as np
 
 import scipy.stats as stats
 import matplotlib
-matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+#matplotlib.rcParams['text.usetex'] = True
+#matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 sns.set(
     rc={
         'figure.figsize': (11.7, 8.27),
@@ -353,7 +353,8 @@ result_directory = os.path.expanduser(
     )
 )
 
-method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
+#method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
+method_names = ['inn', 'inn_dtree']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])

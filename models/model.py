@@ -240,7 +240,14 @@ class Classifier():
 
         return self
 
-    def predict(self, X_test, y_test=None, return_weights=False, return_tree=False, discretize=True):
+    def predict(
+            self,
+            X_test,
+            y_test=None,
+            return_weights=False,
+            return_tree=False,
+            discretize=False,
+    ):
 
         # check if X_test is a DataFrame
         if isinstance(X_test, pd.DataFrame):
@@ -256,24 +263,24 @@ class Classifier():
         else:
             y_test = torch.zeros(X_test.size(0)).long()
 
-        y_test = y_test.to(self.dev)
-        test_dataset = torch.utils.data.TensorDataset(X_test, y_test)
+        #y_test = y_test.to(self.dev)
+        #test_dataset = torch.utils.data.TensorDataset(X_test, y_test)
         #test_dataset = ContextDataset(X_test, y_test)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
+        #test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
         predictions = []
         weights = []
-        for batch in test_loader:
-            X_test, _ = batch
+
         for snapshot_idx, snapshot in enumerate(self.ensemble_snapshots):
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
                 if return_tree:
-                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True, discretize=True)
+                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True, discretize=discretize)
                 else:
-                    output, model_weights = self.model(X_test, return_weights=True, discretize=True)
+                    output, model_weights = self.model(X_test, return_weights=True, discretize=discretize)
             else:
                 output = self.model(X_test)
+
             output = output.squeeze(1)
             if self.mode == 'classification':
                 if self.nr_classes > 2:
@@ -297,14 +304,14 @@ class Classifier():
             if len(weights.shape) > 2:
                 weights = weights[-1, :, :]
                 weights = np.squeeze(weights)
-
+            """
             #weights = weights[:, :-1]
             if self.mode == 'classification':
                 if self.nr_classes == 2:
                     act_predictions = (predictions > 0.5).astype(int)
                 else:
                     act_predictions = np.argmax(predictions, axis=1)
-            """
+            
                 selected_weights = []
                 correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
