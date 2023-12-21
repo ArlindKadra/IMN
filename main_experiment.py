@@ -3,15 +3,16 @@ import json
 import os
 import time
 
-import torch
 import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error
+import torch
 import wandb
 
 from models.model import Classifier
 from utils import get_dataset
-from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
 
-def main(args: argparse.Namespace) -> None:
+
+def main(args: argparse.Namespace):
 
     dev = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -52,12 +53,49 @@ def main(args: argparse.Namespace) -> None:
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     nr_classes = len(unique_classes)
 
+    # separate into classes
+    dataset_classes = {}
+    for i in range(nr_classes):
+        dataset_classes[i] = []
+
+    for index, label in enumerate(y_train):
+        dataset_classes[label].append(index)
+
+    majority_class_nr = -1
+    for i in range(nr_classes):
+        if len(dataset_classes[i]) > majority_class_nr:
+            majority_class_nr = len(dataset_classes[i])
+
+    examples_train = []
+    labels_train = []
+
+    for i in range(nr_classes):
+        nr_instances_class = len(dataset_classes[i])
+        if nr_instances_class < majority_class_nr:
+            # oversample
+            oversampled_indices = np.random.choice(
+                dataset_classes[i],
+                majority_class_nr - nr_instances_class,
+                replace=True,
+            )
+            examples_train.extend(X_train[dataset_classes[i]])
+            labels_train.extend(y_train[dataset_classes[i]])
+            for index in oversampled_indices:
+                examples_train.append(X_train[index])
+                labels_train.append(y_train[index])
+        else:
+            examples_train.extend(X_train[dataset_classes[i]])
+            labels_train.extend(y_train[dataset_classes[i]])
+
     network_configuration = {
         'nr_features': nr_features,
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
     }
+
+    X_train = np.array(examples_train)
+    y_train = np.array(labels_train)
 
     wandb.init(
         project='INN',
@@ -67,11 +105,13 @@ def main(args: argparse.Namespace) -> None:
     weight_norm = args.weight_norm
     wandb.config['weight_norm'] = weight_norm
     interpretable = args.interpretable
-    wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
+    model_name = 'inn' if interpretable else 'tabresnet'
+    wandb.config['model_name'] = model_name
+    wandb.config['dataset_name'] = dataset_name
 
     output_directory = os.path.join(
         args.output_dir,
-        'inn' if interpretable else 'tabresnet',
+        model_name,
         f'{dataset_id}',
         f'{seed}',
 
@@ -85,12 +125,10 @@ def main(args: argparse.Namespace) -> None:
         args=args,
         categorical_indicator=categorical_indicator,
         attribute_names=attribute_names,
-        model_name='inn' if interpretable else 'tabresnet',
+        model_name=model_name,
         device=dev,
         output_directory=output_directory,
     )
-
-    wandb.config['dataset_name'] = dataset_name
 
     model.fit(X_train, y_train)
     if interpretable:
@@ -103,23 +141,19 @@ def main(args: argparse.Namespace) -> None:
     # from series to list
     y_test = y_test.tolist()
     y_train = y_train.tolist()
-    # threshold the predictions if the model is binary
 
     if args.mode == 'classification':
-        if nr_classes == 2:
-            test_auroc = roc_auc_score(y_test, test_predictions)
-            train_auroc = roc_auc_score(y_train, train_predictions)
-        else:
-            test_auroc = roc_auc_score(y_test, test_predictions, multi_class="ovo")
-            train_auroc = roc_auc_score(y_train, train_predictions, multi_class="ovo")
 
+        test_auroc = roc_auc_score(y_test, test_predictions, multi_class='raise' if nr_classes == 2 else 'ovo')
+        train_auroc = roc_auc_score(y_train, train_predictions, multi_class='raise' if nr_classes == 2 else 'ovo')
+
+        # threshold the predictions if the model is binary
         if nr_classes == 2:
             test_predictions = (test_predictions > 0.5).astype(int)
             train_predictions = (train_predictions > 0.5).astype(int)
         else:
             test_predictions = np.argmax(test_predictions, axis=1)
             train_predictions = np.argmax(train_predictions, axis=1)
-
 
         test_accuracy = accuracy_score(y_test, test_predictions)
         train_accuracy = accuracy_score(y_train, train_predictions)
@@ -138,8 +172,8 @@ def main(args: argparse.Namespace) -> None:
         output_info = {
             'train_auroc': train_auroc,
             'train_accuracy': train_accuracy,
-            'test_accuracy': test_accuracy,
             'test_auroc': test_auroc,
+            'test_accuracy': test_accuracy,
             'time': end_time - start_time,
         }
     else:
@@ -149,24 +183,6 @@ def main(args: argparse.Namespace) -> None:
             'time': end_time - start_time,
         }
 
-    """
-    def f(X):
-        return model.predict([X[:, i] for i in range(X.shape[1])]).flatten()
-
-    med = np.median(X_test, axis=0).reshape((1, X_test.shape[1]))
-    explainer = shap.Explainer(f, med)
-    shap_weights = []
-    # reshape example
-    for i in range(X_test.shape[0]):
-        example = X_test[i, :]
-        example = example.reshape((1, X_test.shape[1]))
-        shap_values = explainer.shap_values(example)
-        shap_weights.append(shap_values)
-    shap_weights = np.array(shap_weights)
-    shap_weights = np.squeeze(shap_weights, axis=1)
-    shap_weights = np.mean(np.abs(shap_weights), axis=0)
-    shap_weights = shap_weights / np.sum(shap_weights)
-    """
     if interpretable:
         # print attribute name and weight for the top 10 features
         sorted_idx = np.argsort(weight_importances)[::-1]
@@ -244,52 +260,52 @@ if __name__ == "__main__":
         help="Multiplier for the scheduler",
     )
     parser.add_argument(
-        '--seed',
+        "--seed",
         type=int,
         default=0,
-        help='Random seed',
+        help="Random seed",
     )
     parser.add_argument(
-        '--dataset_id',
+        "--dataset_id",
         type=int,
-        default=1590,
-        help='Dataset id',
+        default=31,
+        help="Dataset id",
     )
     parser.add_argument(
-        '--test_split_size',
+        "--test_split_size",
         type=float,
         default=0.2,
-        help='Test size',
+        help="Test size",
     )
     parser.add_argument(
-        '--nr_restarts',
+        "--nr_restarts",
         type=int,
         default=3,
-        help='Number of learning rate restarts',
+        help="Number of learning rate restarts",
     )
     parser.add_argument(
-        '--output_dir',
+        "--output_dir",
         type=str,
-        default='.',
-        help='Directory to save the results',
+        default=".",
+        help="Directory to save the results",
     )
     parser.add_argument(
-        '--interpretable',
-        action='store_true',
+        "--interpretable",
+        action="store_true",
         default=False,
-        help='Whether to use interpretable models',
+        help="Whether to use interpretable models",
     )
     parser.add_argument(
-        '--encoding_type',
+        "--encoding_type",
         type=str,
-        default='ordinal',
-        help='Encoding type',
+        default="ordinal",
+        help="Encoding type",
     )
     parser.add_argument(
-        '--mode',
+        "--mode",
         type=str,
-        default='classification',
-        help='If we are doing classification or regression.',
+        default="classification",
+        help="If we are doing classification or regression.",
     )
 
     args = parser.parse_args()

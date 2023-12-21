@@ -21,7 +21,7 @@ class TabResNet(nn.Module):
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
 
-        for i in range(nr_blocks):
+        for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
         self.output_layer = nn.Linear(hidden_size, nr_classes)
@@ -33,7 +33,7 @@ class TabResNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
-                    nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
+                nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
     def forward(self, x):
 
@@ -49,8 +49,25 @@ class TabResNet(nn.Module):
         x = self.output_layer(x)
 
         return x
-    def make_residual_block(self, in_features, output_features):
 
+    def make_residual_block(
+        self,
+        in_features,
+        output_features,
+    ):
+        """Creates a residual block.
+
+        Args:
+            in_features: int
+                Number of input features to the first
+                layer of the residual block.
+            output_features: Number of output features
+                for the last layer of the residual block.
+
+        Returns:
+            BasicBlock
+                A residual block.
+        """
         return self.BasicBlock(in_features, output_features)
 
     class BasicBlock(nn.Module):

@@ -1,14 +1,15 @@
 import torch
 import torch.nn as nn
 
+
 class HyperNet(nn.Module):
     def __init__(
-            self,
-            nr_features: int = 32,
-            nr_classes: int = 10,
-            nr_blocks: int = 0,
-            hidden_size: int = 64,
-            **kwargs,
+        self,
+        nr_features: int = 32,
+        nr_classes: int = 10,
+        nr_blocks: int = 0,
+        hidden_size: int = 64,
+        **kwargs,
     ):
         super(HyperNet, self).__init__()
         self.nr_blocks = nr_blocks
@@ -21,7 +22,7 @@ class HyperNet(nn.Module):
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.second_head = nn.Linear(hidden_size, nr_classes)
 
-        for i in range(nr_blocks):
+        for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
@@ -33,7 +34,7 @@ class HyperNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
-                    nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
+                nn.init.constant_(m.bn2.weight, 0)
 
     def forward(self, x, return_weights: bool = False):
 
@@ -58,13 +59,34 @@ class HyperNet(nn.Module):
         else:
             return x
 
-    def make_residual_block(self, in_features, output_features):
+    def make_residual_block(
+        self,
+        in_features: int,
+        output_features: int,
+    ):
+        """Creates a residual block.
+
+        Args:
+            in_features: int
+                Number of input features to the first
+                layer of the residual block.
+            output_features: Number of output features
+                for the last layer of the residual block.
+
+        Returns:
+            BasicBlock
+                A residual block.
+        """
 
         return self.BasicBlock(in_features, output_features)
 
     class BasicBlock(nn.Module):
 
-        def __init__(self, in_features, output_features):
+        def __init__(
+            self,
+            in_features: int,
+            output_features: int,
+        ):
             super(HyperNet.BasicBlock, self).__init__()
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
