@@ -11,7 +11,7 @@ from models.tabresnet import TabResNet
 from models.dtree import DTree
 from dataset.neighbor_dataset import ContextDataset
 
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR, CosineAnnealingLR
 from utils import augment_data, generate_weight_importances_top_k
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import torch
@@ -98,7 +98,7 @@ class Classifier():
 
         scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
         scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
-
+        #scheduler = CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader), eta_min=0.0001)
         if self.mode == 'classification':
             if self.nr_classes > 2:
                 criterion = torch.nn.CrossEntropyLoss()
@@ -160,7 +160,7 @@ class Classifier():
                         closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
-                    main_loss += self.mse_criterion(closest_output, output)
+                    main_loss += 0.5 * self.mse_criterion(closest_output, output)
                     #main_loss += 0.1 * entropy_loss
                 else:
                     x, adversarial_x, y_1, y_2, lam = info
@@ -184,7 +184,7 @@ class Classifier():
                         closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
-                    main_loss += self.mse_criterion(closest_output, output)
+                    main_loss += 0.5 * self.mse_criterion(closest_output, output)
                     #main_loss += 0.1 * entropy_loss
                 if self.interpretable:
                     # take all values except the last one (bias)

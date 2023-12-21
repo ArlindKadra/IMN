@@ -20,6 +20,7 @@ class DTHyperNet(nn.Module):
         self.blocks = nn.ModuleList()
         self.batch_norm = nn.BatchNorm1d(self.hidden_size)
         self.act_func = torch.nn.ReLU()
+        self.leaky_relu = torch.nn.LeakyReLU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
@@ -44,7 +45,7 @@ class DTHyperNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
-                    nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
+                nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
 
 
@@ -60,8 +61,6 @@ class DTHyperNet(nn.Module):
 
         leaf_node_contribs = []
 
-        tree_features = []
-        tree_splits = []
         """
         if discretize and return_tree:
             for feature_importance, feature_split in zip(feature_importances, feature_splits):
@@ -127,7 +126,7 @@ class DTHyperNet(nn.Module):
 
         feature_importances = self.feature_importances(x)
         feature_splits = self.feature_splits(x)
-        feature_splits = self.sigmoid_func(feature_splits)
+        #feature_splits = self.sigmoid_func(feature_splits)
         leaf_node_classes = self.leaf_node_classes(x)
         feature_importances = torch.split(feature_importances, self.nr_features, dim=1)
         feature_splits = torch.split(feature_splits, self.nr_features, dim=1)
