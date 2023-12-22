@@ -125,7 +125,6 @@ class Classifier():
 
                 iteration += 1
                 x, y, closest_x, closest_y = batch
-                closest_x = torch.cat((closest_x, torch.ones(closest_x.shape[0], 1).to(closest_x.device)), dim=1)
                 y = y.to(self.dev)
                 self.model.eval()
                 info = augment_data(
@@ -145,7 +144,8 @@ class Classifier():
                         self.model.train()
                         #output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
                         output, weights = self.model(x, return_weights=True)
-                        closest_output = torch.einsum("ij,ijk->ik", closest_x, weights)
+                        _, closest_weights = self.model(closest_x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
@@ -170,7 +170,8 @@ class Classifier():
                     if self.interpretable:
                         #output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
                         output, weights = self.model(x, return_weights=True)
-                        closest_output = torch.einsum("ij,ijk->ik", closest_x, weights)
+                        _, closest_weights = self.model(closest_x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
                         # closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
