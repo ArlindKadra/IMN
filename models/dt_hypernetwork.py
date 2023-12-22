@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from models.transformer import SetTransformer
 class DTHyperNet(nn.Module):
     def __init__(
             self,

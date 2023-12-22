@@ -37,7 +37,7 @@ class Classifier():
         self.disable_wandb = disable_wandb
         algorithm_backbone = {
             'tabresnet': TabResNet,
-            'inn': DTHyperNet,
+            'inn': HyperNet,
         }
         self.nr_classes = network_configuration['nr_classes'] if network_configuration['nr_classes'] != 1 else 2
         if model_name == 'inn':
@@ -125,6 +125,7 @@ class Classifier():
 
                 iteration += 1
                 x, y, closest_x, closest_y = batch
+                closest_x = torch.cat((closest_x, torch.ones(closest_x.shape[0], 1).to(closest_x.device)), dim=1)
                 y = y.to(self.dev)
                 self.model.eval()
                 info = augment_data(
@@ -142,14 +143,16 @@ class Classifier():
                     x, y_1, y_2, lam = info
                     if self.interpretable:
                         self.model.train()
-                        output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        #output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        output, weights = self.model(x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", closest_x, weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
-                        _, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
-                        closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
-                        feature_importances = main_tree[0]
-                        feature_importances = torch.cat(feature_importances, dim=0)
-                        feature_importances = torch.softmax(feature_importances, dim=1)
-                        entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
+                        #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
+                        #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
+                        #feature_importances = main_tree[0]
+                        #feature_importances = torch.cat(feature_importances, dim=0)
+                        #feature_importances = torch.softmax(feature_importances, dim=1)
+                        #entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                     else:
                         pass
                         #output = self.model(x)
@@ -160,19 +163,21 @@ class Classifier():
                         closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
-                    main_loss += 0.5 * self.mse_criterion(closest_output, output)
-                    #main_loss += 0.1 * entropy_loss
+                    main_loss += self.mse_criterion(closest_output, output)
+                    #main_loss += entropy_loss
                 else:
                     x, adversarial_x, y_1, y_2, lam = info
                     if self.interpretable:
-                        output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        #output, weights, main_tree = self.model(x, return_weights=True, return_tree=True)
+                        output, weights = self.model(x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", closest_x, weights)
                         # closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
-                        _, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
-                        closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
-                        feature_importances = main_tree[0]
-                        feature_importances = torch.cat(feature_importances, dim=0)
-                        feature_importances = torch.softmax(feature_importances, dim=1)
-                        entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
+                        #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
+                        #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
+                        #feature_importances = main_tree[0]
+                        #feature_importances = torch.cat(feature_importances, dim=0)
+                        #feature_importances = torch.softmax(feature_importances, dim=1)
+                        ##entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                         output_adv = self.model(adversarial_x)
                     else:
                         output = self.model(x)
@@ -184,8 +189,9 @@ class Classifier():
                         closest_output = closest_output.squeeze(1)
 
                     main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
-                    main_loss += 0.5 * self.mse_criterion(closest_output, output)
-                    #main_loss += 0.1 * entropy_loss
+                    main_loss +=  self.mse_criterion(closest_output, output)
+                    #main_loss += entropy_loss
+
                 if self.interpretable:
                     # take all values except the last one (bias)
                     #if self.nr_classes > 2:
@@ -275,9 +281,9 @@ class Classifier():
             self.model.eval()
             if self.interpretable:
                 if return_tree:
-                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True, discretize=discretize)
+                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True)
                 else:
-                    output, model_weights = self.model(X_test, return_weights=True, discretize=discretize)
+                    output, model_weights = self.model(X_test, return_weights=True)
             else:
                 output = self.model(X_test)
 
@@ -293,9 +299,9 @@ class Classifier():
                 weights.append([model_weights.detach().to('cpu').numpy()])
 
         predictions = np.array(predictions)
-        #predictions = np.mean(predictions, axis=0)
+        predictions = np.mean(predictions, axis=0)
         # take only the last prediction
-        predictions = predictions[-1, :, :]
+        #predictions = predictions[-1, :, :]
         predictions = np.squeeze(predictions)
 
         if self.interpretable and return_weights:

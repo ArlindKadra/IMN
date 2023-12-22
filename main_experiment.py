@@ -176,6 +176,7 @@ def main(args: argparse.Namespace):
         # print attribute name and weight for the top 10 features
         # average the weight_importances
         weight_importances = np.mean(weight_importances, axis=0)
+        weight_importances = weight_importances[:-1]
         sorted_idx = np.argsort(weight_importances)[::-1]
         top_10_features = [attribute_names[i] for i in sorted_idx]
         print("Top 10 features: %s" % top_10_features)
@@ -217,13 +218,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=512,
+        default=64,
         help="Batch size",
     )
     parser.add_argument(
         '--tree_depth',
         type=int,
-        default=3,
+        default=5,
         help='The depth of the tree.',
     )
     parser.add_argument(
@@ -265,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=54,
+        default=31,
         help='Dataset id',
     )
     parser.add_argument(
