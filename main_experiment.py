@@ -212,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=300,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--tree_depth',
         type=int,
-        default=5,
+        default=2,
         help='The depth of the tree.',
     )
     parser.add_argument(
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=54,
         help='Dataset id',
     )
     parser.add_argument(

@@ -114,19 +114,19 @@ def get_args():
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=300,
         help="Number of epochs",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=512,
+        default=64,
         help="Batch size",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.001,
+        default=0.0001,
         help="Learning rate",
     )
     parser.add_argument(
@@ -180,7 +180,7 @@ def get_args():
     parser.add_argument(
         '--interpretable',
         action='store_true',
-        default=False,
+        default=True,
         help='Whether to use interpretable models',
     )
     parser.add_argument(

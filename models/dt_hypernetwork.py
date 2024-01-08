@@ -6,7 +6,7 @@ class DTHyperNet(nn.Module):
             self,
             nr_features: int = 32,
             nr_classes: int = 10,
-            nr_blocks: int = 0,
+            nr_blocks: int = 2,
             hidden_size: int = 64,
             tree_depth: int = 2,
             **kwargs,
@@ -71,19 +71,23 @@ class DTHyperNet(nn.Module):
                 #tree_splits.append(feature_split)
 
         """
-        for leaf_node_index in range(0, self.nr_leaf_nodes):
+        class_additions = [torch.zeros(feature_importances[0].size(), device=x.device)] * self.nr_classes
 
+        for leaf_node_index in range(0, self.nr_leaf_nodes):
+            feature_output_additions = torch.ones(feature_importances[0].size(), device=x.device)
             coefficient = torch.ones(leaf_node_classes[leaf_node_index].size(), device=x.device)
             for depth_index in range(1, self.tree_depth + 1):
                 index_of_node = int((2 ** (depth_index - 1) * (
                             2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
                 p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)
-                #softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
-                softmaxed_feature_importances = self.act_func(feature_importances[index_of_node])
+                softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
+                #softmaxed_feature_importances = self.act_func(feature_importances[index_of_node])
 
                 if not discretize:
                     node_sd = torch.sigmoid(torch.sum(softmaxed_feature_importances * x, dim=1) - torch.sum(
                         softmaxed_feature_importances * feature_splits[index_of_node], dim=1))
+                    feature_output_additions_node = torch.sigmoid(
+                        softmaxed_feature_importances * x - softmaxed_feature_importances * feature_splits[index_of_node])
                 else:
                     # get the max index of each row of the softmaxed feature importances
                     max_indices = torch.argmax(softmaxed_feature_importances, dim=1).unsqueeze(1)
@@ -98,11 +102,18 @@ class DTHyperNet(nn.Module):
                 node_sd = node_sd.view(-1, 1)
                 coefficient *= node_sd * (1 - p) + (1 - node_sd) * p
 
+                feature_output_additions *= (1 - p) * feature_output_additions_node + p * feature_output_additions_node
+
+            for class_additions_index in range(0, self.nr_classes):
+                bla = leaf_node_classes[leaf_node_index][:, class_additions_index]
+                bla = bla.view(-1, 1)
+                class_additions[class_additions_index] += feature_output_additions * bla
+
             leaf_node_contribs.append(leaf_node_classes[leaf_node_index] * coefficient)
 
         output = sum(leaf_node_contribs)
 
-        return output
+        return output, class_additions
 
     def forward(
         self,
@@ -131,7 +142,7 @@ class DTHyperNet(nn.Module):
         feature_splits = torch.split(feature_splits, self.nr_features, dim=1)
         leaf_node_classes = torch.split(leaf_node_classes, self.nr_classes, dim=1)
 
-        output = self.calculate_predictions(
+        output, class_additions = self.calculate_predictions(
             initial_input,
             feature_importances,
             feature_splits,
@@ -142,18 +153,15 @@ class DTHyperNet(nn.Module):
 
         softmaxed_feature_importances = []
         for i in range(0, self.nr_nodes):
-            softmaxed_feature_importances.append(feature_importances[i])
+            softmaxed_feature_importances.append(torch.softmax(feature_importances[i], dim=1))
 
         softmaxed_feature_importances = sum(softmaxed_feature_importances)
 
-        # calculate the impact on the output of the features by multiplying with the example
-        softmaxed_feature_importances = softmaxed_feature_importances * initial_input
-
         if return_weights:
             if return_tree:
-                return output, softmaxed_feature_importances, (feature_importances, feature_splits, leaf_node_classes)
+                return output, class_additions, (feature_importances, feature_splits, leaf_node_classes)
             else:
-                return output, softmaxed_feature_importances
+                return output, class_additions
         else:
             return output
 
