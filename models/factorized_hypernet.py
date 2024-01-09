@@ -86,7 +86,7 @@ class FactorizedHyperNet(nn.Module):
             specific_class_weights = torch.matmul(specific_class_weights, specific_class_weights.transpose(1, 2))
             factorized_info = torch.matmul(specific_class_weights, input_matrix)
             batch_size = factorized_info.shape[0]
-            factorized_result = torch.stack([torch.triu(factorized_info[i, :, :], diagonal=1) for _ in range(batch_size)])
+            factorized_result = torch.stack([torch.triu(factorized_info[i, :, :], diagonal=1) for i in range(batch_size)])
             class_additions.append(torch.sum(factorized_result, dim=1) + torch.sum(factorized_result, dim=2))
             factorized_result = torch.sum(factorized_result, dim=[1, 2])
             class_info.append(factorized_result)

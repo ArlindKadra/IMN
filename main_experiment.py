@@ -260,13 +260,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',
         type=int,
-        default=1,
+        default=0,
         help='Random seed',
     )
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=24,
         help='Dataset id',
     )
     parser.add_argument(
