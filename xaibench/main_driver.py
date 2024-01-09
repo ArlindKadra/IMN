@@ -114,7 +114,7 @@ def get_args():
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=300,
+        default=100,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -126,7 +126,7 @@ def get_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.0001,
+        default=0.001,
         help="Learning rate",
     )
     parser.add_argument(

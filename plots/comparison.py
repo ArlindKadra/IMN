@@ -107,6 +107,7 @@ def rank_methods(output_dir: str, method_names: list):
         'logistic_regression': 'Logistic Regression',
         'tabnet': 'TabNet',
         'inn_dtree': 'INNDTree',
+        'inn_factorized': 'Factorized INN',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -354,7 +355,7 @@ result_directory = os.path.expanduser(
 )
 
 #method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['inn', 'inn_dtree']
+method_names = ['inn', 'inn_factorized']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])

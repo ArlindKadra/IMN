@@ -57,6 +57,7 @@ class Classifier():
         self.sigmoid_act_func = torch.nn.Sigmoid()
         self.softmax_act_func = torch.nn.Softmax(dim=1)
         self.output_directory = output_directory
+        self.clip_value = 1.0
 
     def fit(self, X, y):
 
@@ -211,8 +212,10 @@ class Classifier():
                     #l1_loss = torch.mean(torch.flatten(weights))
                     #if not torch.isnan(l1_loss):
                     #    main_loss += weight_norm * l1_loss
-
                 main_loss.backward()
+                # Clip gradients
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_value)
+
                 optimizer.step()
                 scheduler.step()
 
@@ -289,7 +292,7 @@ class Classifier():
             self.model.eval()
             if self.interpretable:
                 if return_tree:
-                    output, model_weights, tree = self.model(X_test, return_weights=True, return_tree=True)
+                    output, model_weights = self.model(X_test, return_weights=True)
                 else:
                     output, model_weights = self.model(X_test, return_weights=True)
             else:
@@ -304,7 +307,7 @@ class Classifier():
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:
-                weights.append([model_weights[0].detach().to('cpu').numpy()])
+                weights.append(model_weights.detach().to('cpu').numpy())
 
         predictions = np.array(predictions)
         predictions = np.mean(predictions, axis=0)
@@ -322,8 +325,7 @@ class Classifier():
             #weights = weights[:, :-1]
             #test_examples = X_test.detach().to('cpu').numpy()
             #weights = weights * test_examples
-            """
-            #
+
             if self.mode == 'classification':
                 if self.nr_classes == 2:
                     act_predictions = (predictions > 0.5).astype(int)
@@ -331,34 +333,35 @@ class Classifier():
                     act_predictions = np.argmax(predictions, axis=1)
             
                 selected_weights = []
-                correct_test_examples = []
+                #correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
                     # select the weights for the predicted class
                     if y_test[test_example_idx] == act_predictions[test_example_idx]:
-                        #if self.nr_classes > 2:
-                        #    selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
-                        #else:
-                        selected_weights.append(weights[test_example_idx, :])
-                        correct_test_examples.append(test_example_idx)
+                        if self.nr_classes > 2:
+                            selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
+                        else:
+                            selected_weights.append(weights[test_example_idx, :])
+                        #correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
-                correct_test_examples = np.array(correct_test_examples)
+                #correct_test_examples = np.array(correct_test_examples)
             """
             #weights_importances = generate_weight_importances_top_k(weights, 5)
-            #weights_averages = np.mean(weights, axis=0)
+            #
             # normalize the weights
             #weights_averages = weights_averages / np.sum(weights_averages)
             """
-                test_examples = X_test.detach().to('cpu').numpy()
-                correct_test_examples = test_examples[correct_test_examples]
-                weights = weights * correct_test_examples
+            #test_examples = X_test.detach().to('cpu').numpy()
+            #correct_test_examples = test_examples[correct_test_examples]
+            #weights = weights * correct_test_examples
             """
             #weights = np.mean(np.abs(weights), axis=0)
             #weights = weights / np.sum(weights)
-
+            """
+        #weights = np.mean(weights, axis=0)
         if self.interpretable:
             if return_weights:
                 if return_tree:
-                    return predictions, weights, tree
+                    return predictions, weights#, tree
                 else:
                     return predictions, weights
             else:
