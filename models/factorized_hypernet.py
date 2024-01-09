@@ -53,50 +53,37 @@ class FactorizedHyperNet(nn.Module):
 
         w = self.output_layer(x)
 
+        # b x n x 1
         input_matrix = input.view(-1, self.nr_features, 1)
-        input_matrix = torch.matmul(input_matrix, input_matrix.transpose(1, 2))
+
+        # b x n x n
+        input_matrix = torch.einsum("nij,njk->nik", input_matrix, input_matrix.transpose(1, 2))
+
         factorized_weights = self.extra_complexity(x)
-        factorized_weights = factorized_weights.view(-1, self.nr_features, self.factor_size, self.nr_classes)
+        # b x c x n x k
+        factorized_weights = factorized_weights.view(self.nr_classes, -1,  self.nr_features, self.factor_size)
+
         class_fact_weights = torch.split(factorized_weights, 1, dim=3)
 
+        # c x b x n x n
+        factorized_weights = torch.einsum("iljk, ilkm->iljm", factorized_weights, factorized_weights.transpose(2, 3))
 
-        class_info = []
-        class_additions = []
-        for specific_class_weights in class_fact_weights:
-            specific_class_weights = torch.squeeze(specific_class_weights, dim=3)
-            """
-            
-            example_info = []
-            for example_index, example in enumerate(specific_class_weights):
-                current_info = torch.zeros((1), device=x.device)
-                for k in range(example.size(1)):
+        factorized_info = torch.einsum("cbnj, bnj->cbnj", factorized_weights, input_matrix)
+        mask = torch.triu(torch.ones(self.nr_features, self.nr_features), diagonal=1).to(x.device)
+        #factorized_info = torch.einsum("cbnj, nj -> cbnj", factorized_info * mask)
+        factorized_info = factorized_info * mask
+        class_additions_part1 = torch.sum(factorized_info, dim=3)
+        class_additions_part2 = torch.sum(factorized_info, dim=2)
+        class_additions = class_additions_part1 + class_additions_part2
+        factorized_info = torch.sum(factorized_info, dim=(2, 3))
 
-                    first_part = torch.zeros((1), device=x.device)
-                    for i in range(example.size(0)):
-                        first_part += specific_class_weights[example_index, i, k] * input_matrix[example_index, i]
-                    first_part = first_part ** 2
-                    current_info += first_part
-                    for i in range(example.size(0)):
-                        current_info -= (specific_class_weights[example_index, i, k] ** 2) * (input_matrix[example_index, i] ** 2)
-                example_info.append(current_info)
-            example_info = torch.stack(example_info)
-            example_info = torch.squeeze(example_info, dim=1)
-            class_info.append(example_info)
-            """
-            specific_class_weights = torch.matmul(specific_class_weights, specific_class_weights.transpose(1, 2))
-            factorized_info = torch.matmul(specific_class_weights, input_matrix)
-            batch_size = factorized_info.shape[0]
-            factorized_result = torch.stack([torch.triu(factorized_info[i, :, :], diagonal=1) for i in range(batch_size)])
-            class_additions.append(torch.sum(factorized_result, dim=1) + torch.sum(factorized_result, dim=2))
-            factorized_result = torch.sum(factorized_result, dim=[1, 2])
-            class_info.append(factorized_result)
+        factorized_info = factorized_info.permute(1, 0)
+        class_additions = class_additions.permute(1, 2, 0)
 
-        class_info = torch.stack(class_info, 1)
-        class_additions = torch.stack(class_additions, 2)
         input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
         w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
-        x = x + class_info
+        x = x + factorized_info
         #input = input.view(-1, self.nr_features + 1, 1)
         repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
         weight_additions = repeated_input[:, :-1] * w[:, :-1, :]
