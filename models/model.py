@@ -319,9 +319,9 @@ class Classifier():
                 #weights.append(model_weights.detach().to('cpu').numpy())
                 weights.append(model_weights.detach().to('cpu').numpy())
         predictions = np.array(predictions)
-        #predictions = np.mean(predictions, axis=0)
+        predictions = np.mean(predictions, axis=0)
         # take only the last prediction
-        predictions = predictions[-1, :, :]
+        #predictions = predictions[-1, :, :]
         predictions = np.squeeze(predictions)
 
         if self.interpretable and return_weights:
