@@ -36,9 +36,9 @@ class Classifier():
         super(Classifier, self).__init__()
 
         self.disable_wandb = disable_wandb
-        algorithm_backbone = {
+        self.algorithm_backbone = {
             'tabresnet': TabResNet,
-            'inn': FactorizedHyperNet,
+            'inn': HyperNet,
         }
         self.nr_classes = network_configuration['nr_classes'] if network_configuration['nr_classes'] != 1 else 2
         if model_name == 'inn':
@@ -46,7 +46,9 @@ class Classifier():
         else:
             self.interpretable = False
 
-        self.model = algorithm_backbone[model_name](**network_configuration)
+        self.model_name = model_name
+        self.network_configuration = network_configuration
+        self.model = self.algorithm_backbone[model_name](**network_configuration)
         self.model = self.model.to(device)
         self.args = args
         self.dev = device
@@ -95,9 +97,9 @@ class Classifier():
         T_0: int = max(
             ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
         # Train the hypernetwork
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
-
+        #scheduler2 = CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
         def warmup(current_step: int):
             return float(current_step / (5 * len(train_loader)))
 
@@ -201,17 +203,24 @@ class Classifier():
                     #main_loss += entropy_loss
 
                 if self.interpretable:
-                    pass
-                    # take all values except the last one (bias)
-                    #if self.nr_classes > 2:
-                    #    weights = torch.squeeze(weights)
-                    #else:
-                    #    weights = torch.squeeze(weights, dim=2)
 
-                    #weights = torch.abs(weights)
-                    #l1_loss = torch.mean(torch.flatten(weights))
-                    #if not torch.isnan(l1_loss):
-                    #    main_loss += weight_norm * l1_loss
+                    # take all values except the last one (bias)
+                    if self.nr_classes > 2:
+                        weights = torch.squeeze(weights)
+                    else:
+                        weights = torch.squeeze(weights, dim=2)
+
+                    weights = torch.abs(weights)
+                    l1_loss = torch.mean(torch.flatten(weights))
+                    if not torch.isnan(l1_loss):
+                        main_loss += weight_norm * l1_loss
+
+                # if main loss is nan
+                if torch.isnan(main_loss):
+                    print('nan loss')
+                    self.model = self.algorithm_backbone[self.model_name](**self.network_configuration)
+                    self.model = self.model.to(x.device)
+                    continue
                 main_loss.backward()
                 # Clip gradients
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_value)
@@ -307,12 +316,12 @@ class Classifier():
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:
+                #weights.append(model_weights.detach().to('cpu').numpy())
                 weights.append(model_weights.detach().to('cpu').numpy())
-
         predictions = np.array(predictions)
-        predictions = np.mean(predictions, axis=0)
+        #predictions = np.mean(predictions, axis=0)
         # take only the last prediction
-        #predictions = predictions[-1, :, :]
+        predictions = predictions[-1, :, :]
         predictions = np.squeeze(predictions)
 
         if self.interpretable and return_weights:
@@ -320,6 +329,7 @@ class Classifier():
             weights = np.squeeze(weights)
             if len(weights.shape) > 2:
                 weights = weights[-1, :, :]
+                #weights = np.mean(weights, axis=0)
                 weights = np.squeeze(weights)
             # take all values except the last one (bias)
             #weights = weights[:, :-1]
@@ -331,7 +341,8 @@ class Classifier():
                     act_predictions = (predictions > 0.5).astype(int)
                 else:
                     act_predictions = np.argmax(predictions, axis=1)
-            
+
+
                 selected_weights = []
                 #correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
@@ -344,6 +355,7 @@ class Classifier():
                         #correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
                 #correct_test_examples = np.array(correct_test_examples)
+
             """
             #weights_importances = generate_weight_importances_top_k(weights, 5)
             #

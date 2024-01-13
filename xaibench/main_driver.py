@@ -114,19 +114,19 @@ def get_args():
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=200,
+        default=2000,
         help="Number of epochs",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=64,
+        default=128,
         help="Batch size",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.0001,
+        default=0.1,
         help="Learning rate",
     )
     parser.add_argument(
@@ -138,13 +138,13 @@ def get_args():
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.01,
+        default=0.1,
         help="Weight decay",
     )
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0,
+        default=0.01,
         help="Weight decay",
     )
     parser.add_argument(

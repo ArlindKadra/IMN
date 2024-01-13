@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from models.exu import LogLinear
 
 class DTHyperNet(nn.Module):
     def __init__(
@@ -29,9 +30,9 @@ class DTHyperNet(nn.Module):
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.feature_importances = nn.Linear(hidden_size, self.nr_nodes * nr_features)
-        self.feature_splits = nn.Linear(hidden_size, self.nr_nodes * nr_features)
-        self.leaf_node_classes = nn.Linear(hidden_size, self.nr_leaf_nodes * nr_classes)
+        self.feature_importances = LogLinear(hidden_size, self.nr_nodes * nr_features)
+        self.feature_splits = LogLinear(hidden_size, self.nr_nodes * nr_features)
+        self.leaf_node_classes = LogLinear(hidden_size, self.nr_leaf_nodes * nr_classes)
 
         #torch.nn.init.xavier_uniform_(self.feature_importances.weight)
         #torch.nn.init.xavier_uniform_(self.feature_splits.weight)
@@ -157,6 +158,10 @@ class DTHyperNet(nn.Module):
 
         softmaxed_feature_importances = sum(softmaxed_feature_importances)
 
+        feature_splits = torch.concat(feature_splits, dim=1)
+        if self.training:
+            class_additions = feature_splits
+
         if return_weights:
             if return_tree:
                 return output, class_additions, (feature_importances, feature_splits, leaf_node_classes)
@@ -171,24 +176,29 @@ class DTHyperNet(nn.Module):
 
     class BasicBlock(nn.Module):
 
-        def __init__(self, in_features, output_features):
+        def __init__(self, in_features, output_features, dropout_rate=0.25):
+            self.dropout_rate = dropout_rate
             super(DTHyperNet.BasicBlock, self).__init__()
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
             self.gelu = nn.GELU()
             self.linear2 = nn.Linear(output_features, output_features)
             self.bn2 = nn.BatchNorm1d(output_features)
+            self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
+            self.residual_dropout = nn.Dropout(self.dropout_rate)
 
         def forward(self, x):
             residual = x
+            residual = self.residual_dropout(residual)
 
             out = self.linear1(x)
             out = self.bn1(out)
             out = self.gelu(out)
+            out = self.hidden_state_dropout(out)
             out = self.linear2(out)
             out = self.bn2(out)
+            out = self.gelu(out)
 
             out += residual
-            out = self.gelu(out)
 
             return out

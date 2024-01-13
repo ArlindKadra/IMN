@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from models.exu import LogLinear
 
 class FactorizedHyperNet(nn.Module):
     def __init__(
@@ -10,6 +10,7 @@ class FactorizedHyperNet(nn.Module):
         nr_blocks: int = 0,
         hidden_size: int = 64,
         factor_size: int = 4,
+        dropout_rate: float = 0.2,
         **kwargs,
     ):
         super(FactorizedHyperNet, self).__init__()
@@ -23,12 +24,15 @@ class FactorizedHyperNet(nn.Module):
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.second_head = nn.Linear(hidden_size, nr_classes)
         self.factor_size = factor_size
+        self.dropout_rate = dropout_rate
 
         for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
-        self.extra_complexity = nn.Linear(hidden_size, nr_features * self.factor_size * nr_classes)
+        self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
+        self.extra_complexity = LogLinear(hidden_size, nr_features * self.factor_size * nr_classes)
+        self.interaction_dropout = nn.Dropout(self.dropout_rate)
+        self.main_weights_dropout = nn.Dropout(self.dropout_rate)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -38,6 +42,16 @@ class FactorizedHyperNet(nn.Module):
         for m in self.modules():
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)
+
+    def reinitialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
 
     def forward(self, x, return_weights: bool = False):
 
@@ -52,7 +66,7 @@ class FactorizedHyperNet(nn.Module):
             x = self.blocks[i](x)
 
         w = self.output_layer(x)
-
+        w = self.main_weights_dropout(w)
         # b x n x 1
         input_matrix = input.view(-1, self.nr_features, 1)
 
@@ -60,15 +74,16 @@ class FactorizedHyperNet(nn.Module):
         input_matrix = torch.einsum("nij,njk->nik", input_matrix, input_matrix.transpose(1, 2))
 
         factorized_weights = self.extra_complexity(x)
+        factorized_weights = self.interaction_dropout(factorized_weights)
+
         # b x c x n x k
         factorized_weights = factorized_weights.view(self.nr_classes, -1,  self.nr_features, self.factor_size)
-
-        class_fact_weights = torch.split(factorized_weights, 1, dim=3)
 
         # c x b x n x n
         factorized_weights = torch.einsum("iljk, ilkm->iljm", factorized_weights, factorized_weights.transpose(2, 3))
 
-        factorized_info = torch.einsum("cbnj, bnj->cbnj", factorized_weights, input_matrix)
+        #factorized_info = torch.einsum("cbnj, bnj->cbnj", factorized_weights, input_matrix)
+        factorized_info = factorized_weights * input_matrix
         mask = torch.triu(torch.ones(self.nr_features, self.nr_features), diagonal=1).to(x.device)
         #factorized_info = torch.einsum("cbnj, nj -> cbnj", factorized_info * mask)
         factorized_info = factorized_info * mask
@@ -87,7 +102,7 @@ class FactorizedHyperNet(nn.Module):
         #input = input.view(-1, self.nr_features + 1, 1)
         repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
         weight_additions = repeated_input[:, :-1] * w[:, :-1, :]
-        weight_additions = weight_additions + class_additions
+        weight_additions = weight_additions + 0.5 * class_additions
 
         if return_weights:
             return x, weight_additions
