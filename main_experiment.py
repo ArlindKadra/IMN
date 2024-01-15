@@ -14,6 +14,8 @@ from utils import get_dataset
 
 def main(args: argparse.Namespace):
 
+
+    use_wandb = args.wandb
     dev = torch.device(
             'cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -25,6 +27,7 @@ def main(args: argparse.Namespace):
     dataset_id = args.dataset_id
     test_split_size = args.test_split_size
     seed = args.seed
+    unit_type = args.unit_type
 
     info = get_dataset(
         dataset_id,
@@ -58,20 +61,22 @@ def main(args: argparse.Namespace):
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
+        'unit_type': unit_type,
     }
 
     if 'tree_depth' in args:
         network_configuration['tree_depth'] = args.tree_depth
 
-    wandb.init(
-        project='INN',
-        config=args,
-    )
-    wandb.config['dataset_name'] = dataset_name
     weight_norm = args.weight_norm
-    wandb.config['weight_norm'] = weight_norm
     interpretable = args.interpretable
-    wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
+    if use_wandb:
+        wandb.init(
+            project='INN',
+            config=args,
+        )
+        wandb.config['dataset_name'] = dataset_name
+        wandb.config['weight_norm'] = weight_norm
+        wandb.config['model_name'] = 'inn' if interpretable else 'tabresnet'
 
     output_directory = os.path.join(
         args.output_dir,
@@ -92,9 +97,9 @@ def main(args: argparse.Namespace):
         model_name='inn' if interpretable else 'tabresnet',
         device=dev,
         output_directory=output_directory,
+        disable_wandb=not use_wandb,
     )
 
-    wandb.config['dataset_name'] = dataset_name
     model.fit(X_train, y_train)
 
     if interpretable:
@@ -125,18 +130,21 @@ def main(args: argparse.Namespace):
             test_predictions = np.argmax(test_predictions, axis=1)
             train_predictions = np.argmax(train_predictions, axis=1)
 
-
         test_accuracy = accuracy_score(y_test, test_predictions)
         train_accuracy = accuracy_score(y_train, train_predictions)
-        wandb.run.summary["Test:accuracy"] = test_accuracy
-        wandb.run.summary["Test:auroc"] = test_auroc
-        wandb.run.summary["Train:accuracy"] = train_accuracy
-        wandb.run.summary["Train:auroc"] = train_auroc
+
+        if use_wandb:
+            wandb.run.summary["Test:accuracy"] = test_accuracy
+            wandb.run.summary["Test:auroc"] = test_auroc
+            wandb.run.summary["Train:accuracy"] = train_accuracy
+            wandb.run.summary["Train:auroc"] = train_auroc
     else:
         test_mse = mean_squared_error(y_test, test_predictions)
         train_mse = mean_squared_error(y_train, train_predictions)
-        wandb.run.summary["Test:mse"] = test_mse
-        wandb.run.summary["Train:mse"] = train_mse
+
+        if use_wandb:
+            wandb.run.summary["Test:mse"] = test_mse
+            wandb.run.summary["Train:mse"] = train_mse
 
     end_time = time.time()
     if args.mode == 'classification':
@@ -182,15 +190,18 @@ def main(args: argparse.Namespace):
         print("Top 10 features: %s" % top_10_features)
         # print the weights of the top 10 features
         print(weight_importances[sorted_idx])
-        wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
         output_info['top_10_features'] = top_10_features
         output_info['top_10_features_weights'] = weight_importances[sorted_idx].tolist()
+
+        if use_wandb:
+            wandb.run.summary["Top_10_features"] = top_10_features
+            wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
 
-    wandb.finish()
+    if use_wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":
@@ -266,7 +277,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=41142,
         help='Dataset id',
     )
     parser.add_argument(
@@ -294,10 +305,22 @@ if __name__ == "__main__":
         help='Whether to use interpretable models',
     )
     parser.add_argument(
+        '--wandb',
+        action='store_true',
+        default=False,
+        help='Whether to use wandb.',
+    )
+    parser.add_argument(
         '--encoding_type',
         type=str,
         default='ordinal',
         help='Encoding type',
+    )
+    parser.add_argument(
+        '--unit_type',
+        type=str,
+        default='basic',
+        help='The type of unit, whether basic or exponential.',
     )
     parser.add_argument(
         '--mode',

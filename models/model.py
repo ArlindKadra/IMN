@@ -221,6 +221,7 @@ class Classifier():
                     self.model = self.algorithm_backbone[self.model_name](**self.network_configuration)
                     self.model = self.model.to(x.device)
                     continue
+
                 main_loss.backward()
                 # Clip gradients
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_value)

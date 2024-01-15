@@ -332,10 +332,11 @@ def main(args: argparse.Namespace):
     shap_weights = np.squeeze(shap_weights, axis=1)
     shap_weights = np.mean(np.abs(shap_weights), axis=0)
     shap_weights = shap_weights / np.sum(shap_weights)
-    """
+    
     plt.tight_layout()
     plt.savefig(os.path.join(output_directory, 'decision_boundary_hdtree.pdf'))
     plt.close()
+    """
 
     chosen_example_index = int(0.25 * X_train.shape[0])
     chosen_example = X_train[chosen_example_index]

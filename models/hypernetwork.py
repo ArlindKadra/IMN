@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 
 from models.exu import LogLinear
+
+
 class HyperNet(nn.Module):
     def __init__(
         self,
@@ -10,6 +12,7 @@ class HyperNet(nn.Module):
         nr_blocks: int = 0,
         hidden_size: int = 64,
         dropout_rate: float = 0.25,
+        unit_type: str = "basic",
         **kwargs,
     ):
         super(HyperNet, self).__init__()
@@ -23,12 +26,16 @@ class HyperNet(nn.Module):
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.dropout_rate = dropout_rate
         self.output_drop = nn.Dropout(self.dropout_rate)
+        print(unit_type)
 
 
         for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
 
-        self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
+        if unit_type != "basic":
+            self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
+        else:
+            self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):

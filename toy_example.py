@@ -7,7 +7,7 @@ import numpy as np
 
 import matplotlib
 matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+#matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 import seaborn as sns
 sns.set_style('white')
 
@@ -48,9 +48,14 @@ from utils import generate_weight_importances_top_k
 seed = 11
 torch.manual_seed(seed)
 np.random.seed(seed)
-def sigmoid(x):
-  return 1 / (1 + math.exp(-x))
 
+def sigmoid(x):
+    if x >= 0:
+        z = math.exp(-x)
+        return 1 / (1 + z)
+    else:
+        z = math.exp(x)
+        return z / (1 + z)
 second_feature = np.arange(-2, 2.5, 0.5)
 
 x_1_points = []
@@ -100,7 +105,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=labels,
 )
 """
-fig, ax = plt.subplots(2, 2)
+fig, ax = plt.subplots(2, 2, sharex='all')
+# set hspace
+#fig.subplots_adjust(hspace=0.5)
 X_train, labels = make_moons(n_samples=1000, shuffle=True, random_state=seed, noise=0.1)
 first_feature = X_train[:, 0]
 second_feature = X_train[:, 1]
@@ -119,7 +126,7 @@ print(f'Random forest accuracy: {np.sum(y_pred == labels) / len(labels)}')
 X_train = torch.tensor(X_train, dtype=torch.float32).to('cpu')
 y_train = torch.tensor(labels, dtype=torch.float32).to('cpu')
 
-batch_size = 32
+batch_size = 128
 train_dataset = torch.utils.data.TensorDataset(
     X_train,
     y_train,
@@ -127,17 +134,18 @@ train_dataset = torch.utils.data.TensorDataset(
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-hypernet = DTHyperNet(
+hypernet = HyperNet(
     nr_features=X_train.size(1),
     nr_classes=1,
     nr_blocks=2,
     hidden_size=128,
+    unit_type='exp',
 ).to('cpu')
 
 criterion = torch.nn.BCEWithLogitsLoss()
 second_criterion = torch.nn.MSELoss()
-optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=1)
-nr_epochs = 100
+optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=0.1)
+nr_epochs = 1000
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs)
 hypernet.train()
 specify_weight_norm = True
@@ -151,9 +159,10 @@ for epoch in range(nr_epochs):
         output = output.squeeze()
         #weights = torch.squeeze(weights, dim=2)
         #weights = weights[:, :-1]
-        l1_loss = torch.norm(weights, 1)
+        weights = torch.abs(weights)
+        l1_loss = torch.mean(torch.flatten(weights))
         main_loss = criterion(output, y)
-        loss = main_loss #+ (weight_norm * l1_loss)
+        loss = main_loss + (weight_norm * l1_loss)
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
@@ -215,7 +224,7 @@ for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100
     output_list = []
     points = []
     for second_feature in np.linspace(min_second_feature, max_second_feature, 100):
-        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'), discretize=True)
+        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'))
         output = output.squeeze()
         output = output.detach().cpu().numpy()
         output_list.append(output)
@@ -229,7 +238,7 @@ for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100
 ax[0, 0].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
 ax[0, 0].scatter(negative_examples_first_feature, negative_examples_second_feature, color='blue', marker="o", s=12)
 ax[0, 0].plot(hyperplane_x_points, hyperplane_y_points, label=r'$\{x\, | \, \hat{w}\left(x\right)^T\,x + \hat{w}_0\left(x\right) = 0\}$', color='green', linewidth=3.5)
-ax[0, 0].set_xlabel('$x_1$')
+#ax[0, 0].set_xlabel('$x_1$')
 ax[0, 0].set_ylabel('$x_2$')
 ax[0, 0].set_title('Globally Accurate')
 first_feature = np.arange(0, 15, 0.5)
@@ -242,8 +251,8 @@ chosen_examples = X_train[chosen_indices]
 _, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True)
 weights = weights.detach().to('cpu').numpy()
 #plt.figure()
-ax[0, 1].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
-ax[0, 1].scatter(negative_examples_first_feature, negative_examples_second_feature, color='blue', marker="o", s=12)
+ax[1, 0].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
+ax[1, 0].scatter(negative_examples_first_feature, negative_examples_second_feature, color='blue', marker="o", s=12)
 colors = ['black', 'orange']
 markers = ['o', '^']
 labels = ["$x^\mathrm{'}$", '$y=0$']
@@ -264,13 +273,13 @@ for index, example in enumerate(chosen_examples):
         if second_part_line[i] > -1.0 and second_part_line[i] < 1.6:
             refined_first_part_line.append(first_part_line[i])
             refined_second_part_line.append(second_part_line[i])
-    ax[0, 1].plot(refined_first_part_line, refined_second_part_line, color=colors[index], label=r"$\{x \, | \, \hat{w}(x\mathrm{'})^T\,x + \hat{w}_0(x\mathrm{'}) = 0\}$", markersize=12, linewidth=3.5)
-    ax[0, 1].scatter(first_feature, second_feature, color=colors[index], marker=markers[index], label=labels[index],
+    ax[1, 0].plot(refined_first_part_line, refined_second_part_line, color=colors[index], label=r"$\{x \, | \, \hat{w}(x\mathrm{'})^T\,x + \hat{w}_0(x\mathrm{'}) = 0\}$", markersize=12, linewidth=3.5)
+    ax[1, 0].scatter(first_feature, second_feature, color=colors[index], marker=markers[index], label=labels[index],
                      s=35)
-    ax[0, 1].text(first_feature - 0.15, second_feature + 0.2, r"$x\mathrm{'}$", fontsize=27)
-ax[0, 1].set_xlabel('$x_1$')
-ax[0, 1].set_ylabel('$x_2$')
-ax[0, 1].set_title('Locally Interpretable')
+    ax[1, 0].text(first_feature - 0.15, second_feature + 0.2, r"$x\mathrm{'}$", fontsize=27)
+ax[1, 0].set_xlabel('$x_1$')
+ax[1, 0].set_ylabel('$x_2$')
+ax[1, 0].set_title('Locally Interpretable')
 first_feature = np.arange(0, 15, 0.5)
 y = [math.sin(point) for point in first_feature]
 
@@ -286,12 +295,11 @@ def legend_without_duplicate_labels(fig):
             remove_duplicates[labels[i]] = True
             new_lines.append(lines[i])
             new_labels.append(labels[i])
-    fig.legend(new_lines, new_labels, loc='center left', bbox_to_anchor=(0.95, 0.7))
+    fig.legend(new_lines, new_labels, loc='lower center', bbox_to_anchor=(0.3, -0.25), fancybox=True, shadow=True, ncol=1)
 #fig.legend(handles, labels, bbox_to_anchor=(0.5, 0.45), loc='lower center', ncol=3)
 
-for i in range(1, 2):
-    for j in range(2):
-        ax[i, j].set_visible(False)
+for i in range(2):
+    ax[i, 1].set_visible(False)
 legend_without_duplicate_labels(fig)
 fig.savefig('motivation.pdf', bbox_inches='tight')
 """

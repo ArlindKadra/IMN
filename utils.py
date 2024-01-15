@@ -366,6 +366,8 @@ def preprocess_dataset(
 
 def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True, encoding_type: str ='ordinal') -> Dict:
 
+    # read a local file named benchmark, split numbers based on spaces and convert to integers
+
     # Get the data
     dataset = openml.datasets.get_dataset(dataset_id, download_data=False)
     dataset_name = dataset.name

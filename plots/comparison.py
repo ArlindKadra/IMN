@@ -107,7 +107,7 @@ def rank_methods(output_dir: str, method_names: list):
         'logistic_regression': 'Logistic Regression',
         'tabnet': 'TabNet',
         'inn_dtree': 'INNDTree',
-        'inn_factorized': 'Factorized INN',
+        'inn_exp': 'INN exp',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -117,6 +117,9 @@ def rank_methods(output_dir: str, method_names: list):
 
     result_dfs = []
     for method_name, method_result in zip(method_names, method_results):
+        # store dataset ids of inn
+        if method_name == 'inn':
+            inn_dataset_ids = method_result['dataset_id'].values
         result_dfs.append(method_result.assign(method=method_name))
 
     df = pd.concat(result_dfs, axis=0)
@@ -126,7 +129,7 @@ def rank_methods(output_dir: str, method_names: list):
 
     catboost_performances = []
     inn_perfomances = []
-    for dataset_id in df['dataset_id'].unique():
+    for dataset_id in inn_dataset_ids:
         method_dataset_performances = []
         try:
             considered_methods = []
@@ -134,9 +137,9 @@ def rank_methods(output_dir: str, method_names: list):
                 # get test performance of method on dataset
                 method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_auroc'].values[0]
                 method_dataset_performances.append(method_test_performance)
-                if method_name == 'ordinal_inn':
+                if method_name == 'inn_exp':
                     considered_methods.append(method_test_performance)
-                if method_name == 'random_forest':
+                if method_name == 'catboost':
                     considered_methods.append(method_test_performance)
                 print(f'{method_name} {dataset_id}: {method_test_performance}')
 
@@ -168,7 +171,8 @@ def rank_methods(output_dir: str, method_names: list):
     plt.ylabel('Rank')
     plt.savefig(os.path.join(output_dir, 'test_performance_rank_comparison.pdf'), bbox_inches="tight")
     # significance test
-    print(stats.wilcoxon(catboost_performances, inn_perfomances))
+    _ = stats.wilcoxon(catboost_performances, inn_perfomances)
+    print(_.pvalue)
 
 
 def analyze_results(output_dir: str, method_names: list):
@@ -355,7 +359,7 @@ result_directory = os.path.expanduser(
 )
 
 #method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['inn', 'inn_factorized']
+method_names = ['catboost', 'random_forest', 'inn']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
