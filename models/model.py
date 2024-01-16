@@ -163,8 +163,7 @@ class Classifier():
                         #feature_importances = torch.softmax(feature_importances, dim=1)
                         #entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                     else:
-                        pass
-                        #output = self.model(x)
+                        output = self.model(x)
                         #closest_output = self.model(closest_x)
 
                     if self.nr_classes == 2:

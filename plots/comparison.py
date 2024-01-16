@@ -32,7 +32,7 @@ def prepare_method_results(output_dir:str, method_name: str):
 
     result_dict = {
         'dataset_id': [],
-        'train_auroc': [],
+        #'train_auroc': [],
         'test_auroc': [],
     }
     method_output_dir = os.path.join(output_dir, method_name)
@@ -46,11 +46,11 @@ def prepare_method_results(output_dir:str, method_name: str):
                 with open(os.path.join(seed_dir, 'output_info.json'), 'r') as f:
                     seed_result = json.load(f)
                     seed_test_balanced_accuracy.append(seed_result['test_auroc'])
-                    seed_train_balanced_accuracy.append(seed_result['train_auroc'][-1] if method_name == 'inn' else seed_result['train_auroc'])
+                    #seed_train_balanced_accuracy.append(seed_result['train_auroc'][-1] if method_name == 'inn' else seed_result['train_auroc'])
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
         result_dict['dataset_id'].append(dataset_id)
-        result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
+        #result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
         result_dict['test_auroc'].append(np.mean(seed_test_balanced_accuracy) if len(seed_test_balanced_accuracy) > 0 else np.NAN)
 
     return pd.DataFrame.from_dict(result_dict)
@@ -67,6 +67,8 @@ def distribution_methods(output_dir: str, method_names: list):
         'decision_tree': 'Decision Tree',
         'logistic_regression': 'Logistic Regression',
         'tabnet': 'TabNet',
+        'nam': 'NAM',
+        'inn_exp': 'INN',
     }
     method_results = []
     for method_name in method_names:
@@ -85,10 +87,17 @@ def distribution_methods(output_dir: str, method_names: list):
 
     df = pd.concat(df_results, axis=0)
 
-    df['train_auroc'] = df['train_auroc'].fillna(0)
-    df['test_auroc'] = df['test_auroc'].fillna(0)
+    #df['train_auroc'] = df['train_auroc'].fillna(0)
+    # remove nan values
+    #df['test_auroc'] = df['test_auroc'].fillna(0)
+
+    #df['test_auroc'] = df['test_auroc'].fillna(0)
     plt.boxplot([df[df['method'] == method_name]['test_auroc'] for method_name in method_names])
     plt.xticks(range(1, len(method_names) + 1), pretty_names)
+    # tilt the labels slightly
+    plt.xticks(rotation=45)
+    # make ticks visible
+    plt.tick_params(axis='x', which='both', bottom=True)
     plt.ylabel('Gain')
     plt.savefig(os.path.join(output_dir, 'test_performance_comparison.pdf'), bbox_inches="tight")
 
@@ -108,6 +117,7 @@ def rank_methods(output_dir: str, method_names: list):
         'tabnet': 'TabNet',
         'inn_dtree': 'INNDTree',
         'inn_exp': 'INN exp',
+        'nam': 'NAM',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -139,7 +149,7 @@ def rank_methods(output_dir: str, method_names: list):
                 method_dataset_performances.append(method_test_performance)
                 if method_name == 'inn_exp':
                     considered_methods.append(method_test_performance)
-                if method_name == 'catboost':
+                if method_name == 'inn':
                     considered_methods.append(method_test_performance)
                 print(f'{method_name} {dataset_id}: {method_test_performance}')
 
@@ -193,11 +203,17 @@ def prepare_cd_data(output_dir: str, method_names: list):
         'logistic_regression': 'Logistic Regression',
         'tabnet': 'TabNet',
         'inn_dtree': 'INDTree',
+        'nam': 'NAM',
+        'inn_exp': 'INN',
     }
     method_results = {}
     for method_name in method_names:
         # remove column from df
-        method_result = prepare_method_results(output_dir, method_name).drop(columns=['train_auroc'])
+        try:
+            method_result = prepare_method_results(output_dir, method_name).drop(columns=['train_auroc'])
+        except KeyError:
+            method_result = prepare_method_results(output_dir, method_name)
+
         # convert from accuracy to error
         method_result['test_auroc'] = 1 - method_result['test_auroc']
         method_results[method_name] = method_result
@@ -205,7 +221,7 @@ def prepare_cd_data(output_dir: str, method_names: list):
     # prepare distribution plot
     df_results = []
 
-    filtered_tasks = method_results['inn']['dataset_id']
+    filtered_tasks = method_results['nam']['dataset_id']
     # get the common dataset ids between all methods
     #for method_name in method_names:
     #    filtered_tasks = set(filtered_tasks).intersection(set(method_results[method_name]['dataset_id']))
@@ -359,7 +375,8 @@ result_directory = os.path.expanduser(
 )
 
 #method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['catboost', 'random_forest', 'inn']
+method_names = ['inn_exp', 'catboost', 'tabnet', 'random_forest', 'tabresnet']
+#method_names = ['inn', 'inn_exp']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
