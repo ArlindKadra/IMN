@@ -52,6 +52,7 @@ class Experiment:
                     nr_classes = len(unique_classes)
                 else:
                     nr_classes = 1
+
                 network_configuration = {
                     'nr_features': X.shape[1],
                     'nr_classes': nr_classes,
