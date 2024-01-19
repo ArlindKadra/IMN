@@ -375,7 +375,7 @@ result_directory = os.path.expanduser(
 )
 
 #method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['inn_exp', 'catboost', 'tabnet', 'random_forest', 'tabresnet']
+method_names = ['tabresnet', 'catboost', 'tabnet', 'random_forest', 'inn']
 #method_names = ['inn', 'inn_exp']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)

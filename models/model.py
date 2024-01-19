@@ -60,6 +60,7 @@ class Classifier():
         self.softmax_act_func = torch.nn.Softmax(dim=1)
         self.output_directory = output_directory
         self.clip_value = 1.0
+        self.mse_criterion = torch.nn.MSELoss()
 
     def fit(self, X, y):
 
@@ -88,10 +89,11 @@ class Classifier():
 
 
         # Create dataloader for training
-        train_dataset = torch.utils.data.TensorDataset(
-            X_train,
-            y_train,
-        )
+        #train_dataset = torch.utils.data.TensorDataset(
+        #    X_train,
+        #    y_train,
+        #)
+        train_dataset = ContextDataset(X_train, y_train)
         #train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         T_0: int = max(
@@ -100,6 +102,7 @@ class Classifier():
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
         #scheduler2 = CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
+
         def warmup(current_step: int):
             return float(current_step / (5 * len(train_loader)))
 
@@ -130,7 +133,7 @@ class Classifier():
             for batch_idx, batch in enumerate(train_loader):
 
                 iteration += 1
-                x, y = batch
+                x, y, closest_x, closest_y = batch
                 if self.mode != 'classification':
                     y = y.float()
 
@@ -153,7 +156,7 @@ class Classifier():
                         self.model.train()
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
-                        #_, closest_weights = self.model(closest_x, return_weights=True)
+                        _, closest_weights = self.model(closest_x, return_weights=True)
                         #closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
@@ -170,7 +173,8 @@ class Classifier():
                         output = output.squeeze(1)
                         #closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)
+                    secondary_loss = self.mse_criterion(weights, closest_weights)
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + secondary_loss
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
                 else:
@@ -178,7 +182,7 @@ class Classifier():
                     if self.interpretable:
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
-                        #_, closest_weights = self.model(closest_x, return_weights=True)
+                        _, closest_weights = self.model(closest_x, return_weights=True)
                         #closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
@@ -188,16 +192,19 @@ class Classifier():
                         #feature_importances = torch.softmax(feature_importances, dim=1)
                         #entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                         output_adv = self.model(adversarial_x)
+                        secondary_loss = self.mse_criterion(weights, closest_weights)
+
                     else:
                         output = self.model(x)
                         output_adv = self.model(adversarial_x)
+                        secondary_loss = self.mse_criterion(weights, closest_weights)
 
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
                         output_adv = output_adv.squeeze(1)
                         #closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2) + secondary_loss
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
 
@@ -210,6 +217,7 @@ class Classifier():
                         weights = torch.squeeze(weights, dim=2)
 
                     weights = torch.abs(weights)
+                    #weights = torch.pow(weights, 2)
                     l1_loss = torch.mean(torch.flatten(weights))
                     if not torch.isnan(l1_loss):
                         main_loss += weight_norm * l1_loss

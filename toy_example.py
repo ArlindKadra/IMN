@@ -4,11 +4,15 @@ import math
 import torch
 import numpy as np
 
+from sklearn.metrics import roc_auc_score, roc_curve
 
 import matplotlib
 matplotlib.rcParams['text.usetex'] = True
 #matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 import seaborn as sns
+
+from dataset.neighbor_dataset import ContextDataset
+
 sns.set_style('white')
 
 sns.set(
@@ -49,13 +53,18 @@ seed = 11
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-def sigmoid(x):
+# stable sigmoid
+"""def sigmoid(x):
     if x >= 0:
         z = math.exp(-x)
         return 1 / (1 + z)
     else:
         z = math.exp(x)
         return z / (1 + z)
+"""
+def sigmoid(x):
+    return 1 / (1 + math.exp(-x))
+
 second_feature = np.arange(-2, 2.5, 0.5)
 
 x_1_points = []
@@ -109,6 +118,8 @@ fig, ax = plt.subplots(2, 2, sharex='all')
 # set hspace
 #fig.subplots_adjust(hspace=0.5)
 X_train, labels = make_moons(n_samples=1000, shuffle=True, random_state=seed, noise=0.1)
+# standardize
+#X_train = (X_train - np.mean(X_train, axis=0)) / np.std(X_train, axis=0)
 first_feature = X_train[:, 0]
 second_feature = X_train[:, 1]
 positive_examples = X_train[labels == 1]
@@ -126,7 +137,7 @@ print(f'Random forest accuracy: {np.sum(y_pred == labels) / len(labels)}')
 X_train = torch.tensor(X_train, dtype=torch.float32).to('cpu')
 y_train = torch.tensor(labels, dtype=torch.float32).to('cpu')
 
-batch_size = 128
+batch_size = 64
 train_dataset = torch.utils.data.TensorDataset(
     X_train,
     y_train,
@@ -139,37 +150,52 @@ hypernet = HyperNet(
     nr_classes=1,
     nr_blocks=2,
     hidden_size=128,
-    unit_type='exp',
+    unit_type='basic',
 ).to('cpu')
 
 criterion = torch.nn.BCEWithLogitsLoss()
 second_criterion = torch.nn.MSELoss()
-optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=0.1)
-nr_epochs = 1000
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs)
+train_dataset = ContextDataset(X_train, y_train)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+# test_dataset = ContextDataset(X_test, y_test)
+# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
+optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=0.01)
+nr_epochs = 100
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
 hypernet.train()
 specify_weight_norm = True
-weight_norm = 0
+weight_norm = 0.01
+mse_criteria = torch.nn.MSELoss()
 for epoch in range(nr_epochs):
     epoch_loss = 0
     epoch_auroc = 0
-    for x, y in train_loader:
+    for x, y, closest_x, closest_y in train_loader:
         optimizer.zero_grad()
-        output, weights = hypernet(x, return_weights=True)
+        output, weights = hypernet(x, return_weights=True, simple_weights=True)
         output = output.squeeze()
+        _, closest_weights = hypernet(closest_x, return_weights=True, simple_weights=True)
+        closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
+        closest_output = closest_output.squeeze()
         #weights = torch.squeeze(weights, dim=2)
         #weights = weights[:, :-1]
-        weights = torch.abs(weights)
-        l1_loss = torch.mean(torch.flatten(weights))
+        #weights = torch.abs(weights)
+        #weights = torch.pow(weights, 2)
+        l1_loss = torch.mean(torch.flatten(torch.abs(weights)))
         main_loss = criterion(output, y)
-        loss = main_loss + (weight_norm * l1_loss)
+        #secondary_loss = criterion(closest_output, y)
+        closest_output = closest_output.float()
+        #secondary_loss = mse_criteria(closest_output, output)
+        #differnce_weights = torch.abs(weights - closest_weights)
+        #secondary_loss = torch.mean(torch.flatten(differnce_weights))
+        secondary_loss = mse_criteria(weights, closest_weights)
+        loss = main_loss + (weight_norm * l1_loss) + 0.1 * secondary_loss
         loss.backward()
         optimizer.step()
+        scheduler.step()
         epoch_loss += loss.item()
         epoch_auroc += binary_auroc(output, y)
     epoch_loss /= len(train_loader)
     epoch_auroc /= len(train_loader)
-    scheduler.step()
     print(f'Epoch {epoch} loss: {epoch_loss}, accuracy: {epoch_auroc}')
 """
 hypernet.eval()
@@ -201,10 +227,22 @@ positive_examples_first_feature = []
 positive_examples_second_feature = []
 negative_examples_first_feature = []
 negative_examples_second_feature = []
+outputs_after_sigmoid = [sigmoid(output_instance) for output_instance in output]
+fpr, tpr, thresholds = roc_curve(y_train.detach().cpu().numpy(), outputs_after_sigmoid)
+#auroc = roc_auc_score(y_val.numpy(), y_probs_val)
 
-for instance_index, test_label in enumerate(output):
-    test_value = sigmoid(test_label)
-    if test_value > 0.5:
+# Calculate Youden's J statistic
+youden_j = tpr - fpr
+
+# Find the index of the threshold that maximizes Youden's J
+optimal_threshold_index = np.argmax(youden_j)
+
+# Use the optimal threshold
+optimal_threshold = thresholds[optimal_threshold_index]
+
+
+for instance_index, test_label in enumerate(y_train):
+    if test_label > 0:
         positive_examples_first_feature.append(first_feature[instance_index])
         positive_examples_second_feature.append(second_feature[instance_index])
     else:
@@ -220,20 +258,22 @@ max_second_feature = np.max(second_feature)
 
 hyperplane_x_points = []
 hyperplane_y_points = []
-for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100):
-    output_list = []
-    points = []
-    for second_feature in np.linspace(min_second_feature, max_second_feature, 100):
-        output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'))
-        output = output.squeeze()
-        output = output.detach().cpu().numpy()
-        output_list.append(output)
-        points.append([point_first_feature, second_feature])
-    output_list = np.abs(output_list)
-    min_index = np.argmin(output_list)
-    hyperplane_point = points[min_index]
-    hyperplane_x_points.append(hyperplane_point[0])
-    hyperplane_y_points.append(hyperplane_point[1])
+with torch.no_grad():
+    for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100):
+        output_list = []
+        points = []
+        for second_feature in np.linspace(min_second_feature, max_second_feature, 100):
+            output = hypernet(torch.tensor([[point_first_feature, second_feature]], dtype=torch.float32).to('cpu'))
+            output = output.squeeze()
+            output = output.detach().cpu().numpy()
+            output_list.append(sigmoid(output) - optimal_threshold)
+            #output_list.append(output)
+            points.append([point_first_feature, second_feature])
+        output_list = np.abs(output_list)
+        min_index = np.argmin(output_list)
+        hyperplane_point = points[min_index]
+        hyperplane_x_points.append(hyperplane_point[0])
+        hyperplane_y_points.append(hyperplane_point[1])
 
 ax[0, 0].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
 ax[0, 0].scatter(negative_examples_first_feature, negative_examples_second_feature, color='blue', marker="o", s=12)
@@ -248,7 +288,8 @@ y = [math.sin(point) for point in first_feature]
 
 chosen_indices = np.random.choice(range(X_train.shape[0]), 2, replace=False)
 chosen_examples = X_train[chosen_indices]
-_, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True)
+hypernet.eval()
+_, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True, simple_weights=True)
 weights = weights.detach().to('cpu').numpy()
 #plt.figure()
 ax[1, 0].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)

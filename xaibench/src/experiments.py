@@ -57,6 +57,7 @@ class Experiment:
                     'nr_classes': nr_classes,
                     'nr_blocks': 2,
                     'hidden_size': 128,
+                    'unit_type': 'exp',
                 }
                 categorical_indicator = [False] * X.shape[1]
                 attribute_names = [str(i) for i in range(X.shape[1])]
@@ -174,7 +175,7 @@ class Experiment:
         for model, trained_model in zip(self.models, self.trained_models):
             results["models"][model.name] = {}
             if model.name not in self.ground_truth_explanations:
-                ground_truth_expectations, ground_truth_weights= self.generate_ground_truth_explanations(trained_model)
+                ground_truth_expectations, ground_truth_weights = self.generate_ground_truth_explanations(trained_model)
                 self.ground_truth_explanations[model.name] = ground_truth_expectations, ground_truth_weights
                 self.explanations[model.name] = {}
             
@@ -182,6 +183,7 @@ class Experiment:
                 logging.info(f"Explaining {model.name} with {explainer.name}")
                 if explainer.name not in self.explanations[model.name]:
                     feature_weights, feature_weights_train = self.generate_explanations(trained_model, explainer)
+
                     self.explanations[model.name][explainer.name] = feature_weights, feature_weights_train
                 results["models"][model.name][explainer.name] = {}
 

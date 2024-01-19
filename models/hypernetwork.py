@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
@@ -26,8 +27,6 @@ class HyperNet(nn.Module):
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.dropout_rate = dropout_rate
         self.output_drop = nn.Dropout(self.dropout_rate)
-        print(unit_type)
-
 
         for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
@@ -46,7 +45,7 @@ class HyperNet(nn.Module):
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)
 
-    def forward(self, x, return_weights: bool = False):
+    def forward(self, x, return_weights: bool = False, simple_weights: bool = False):
 
         x = x.view(-1, self.nr_features)
         input = x
@@ -68,7 +67,23 @@ class HyperNet(nn.Module):
         #w = w.squeeze(2)
         repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
         # if test mode
-        if not self.training:
+        if not self.training and not simple_weights:
+            """
+            w_without_bias = w[:, :-1, :]
+            for i in range(w_without_bias.size(1)):
+
+                feature_i = w_without_bias[:, i, :]
+                # create figure
+
+
+                fig = plt.figure()
+                plt.hist(torch.flatten(feature_i.detach()).cpu().numpy())
+                plt.ylabel('Frequency')
+                plt.xlabel('Value')
+                plt.title("Feature " + str(i))
+                plt.savefig("feature_" + str(i) + ".pdf", bbox_inches='tight')
+                plt.close(fig)
+            """
             w = repeated_input[:, :-1, :] * w[:, :-1, :]
 
         if return_weights:

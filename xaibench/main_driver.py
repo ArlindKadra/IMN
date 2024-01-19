@@ -114,7 +114,7 @@ def get_args():
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=2000,
+        default=1000,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -144,7 +144,7 @@ def get_args():
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=0.01,
+        default=0.1,
         help="Weight decay",
     )
     parser.add_argument(

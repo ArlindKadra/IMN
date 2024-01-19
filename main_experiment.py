@@ -277,7 +277,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=24,
         help='Dataset id',
     )
     parser.add_argument(
