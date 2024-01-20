@@ -160,7 +160,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
 # test_dataset = ContextDataset(X_test, y_test)
 # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
 optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=0.01)
-nr_epochs = 100
+nr_epochs = 200
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
 hypernet.train()
 specify_weight_norm = True
@@ -173,8 +173,8 @@ for epoch in range(nr_epochs):
         optimizer.zero_grad()
         output, weights = hypernet(x, return_weights=True, simple_weights=True)
         output = output.squeeze()
-        _, closest_weights = hypernet(closest_x, return_weights=True, simple_weights=True)
-        closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
+        #_, closest_weights = hypernet(closest_x, return_weights=True, simple_weights=True)
+        closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
         closest_output = closest_output.squeeze()
         #weights = torch.squeeze(weights, dim=2)
         #weights = weights[:, :-1]
@@ -184,11 +184,11 @@ for epoch in range(nr_epochs):
         main_loss = criterion(output, y)
         #secondary_loss = criterion(closest_output, y)
         closest_output = closest_output.float()
-        #secondary_loss = mse_criteria(closest_output, output)
+        secondary_loss = criterion(closest_output, closest_y)
         #differnce_weights = torch.abs(weights - closest_weights)
         #secondary_loss = torch.mean(torch.flatten(differnce_weights))
-        secondary_loss = mse_criteria(weights, closest_weights)
-        loss = main_loss + (weight_norm * l1_loss) + 0.1 * secondary_loss
+        #secondary_loss = mse_criteria(weights, closest_weights)
+        loss = main_loss + (weight_norm * l1_loss) + 0.5 * secondary_loss
         loss.backward()
         optimizer.step()
         scheduler.step()

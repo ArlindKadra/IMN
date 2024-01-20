@@ -118,6 +118,7 @@ def rank_methods(output_dir: str, method_names: list):
         'inn_dtree': 'INNDTree',
         'inn_exp': 'INN exp',
         'nam': 'NAM',
+        'inn_close': 'INN Close',
     }
     pretty_names = [pretty_method_names[method_name] for method_name in method_names]
 
@@ -147,9 +148,9 @@ def rank_methods(output_dir: str, method_names: list):
                 # get test performance of method on dataset
                 method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_auroc'].values[0]
                 method_dataset_performances.append(method_test_performance)
-                if method_name == 'inn_exp':
-                    considered_methods.append(method_test_performance)
                 if method_name == 'inn':
+                    considered_methods.append(method_test_performance)
+                if method_name == 'inn_exp':
                     considered_methods.append(method_test_performance)
                 print(f'{method_name} {dataset_id}: {method_test_performance}')
 
@@ -375,8 +376,8 @@ result_directory = os.path.expanduser(
 )
 
 #method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['tabresnet', 'catboost', 'tabnet', 'random_forest', 'inn']
-#method_names = ['inn', 'inn_exp']
+#method_names = ['tabresnet', 'catboost', 'tabnet', 'random_forest', 'inn']
+method_names = ['inn', 'inn_exp']
 rank_methods(result_directory, method_names)
 #prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])

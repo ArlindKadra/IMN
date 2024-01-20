@@ -156,8 +156,8 @@ class Classifier():
                         self.model.train()
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
-                        _, closest_weights = self.model(closest_x, return_weights=True)
-                        #closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
+                        #_, closest_weights = self.model(closest_x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
@@ -171,10 +171,9 @@ class Classifier():
 
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
-                        #closest_output = closest_output.squeeze(1)
+                        closest_output = closest_output.squeeze(1)
 
-                    secondary_loss = self.mse_criterion(weights, closest_weights)
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + secondary_loss
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + criterion(closest_output, closest_y)
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
                 else:
@@ -182,8 +181,8 @@ class Classifier():
                     if self.interpretable:
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
-                        _, closest_weights = self.model(closest_x, return_weights=True)
-                        #closest_output = torch.einsum("ij,ijk->ik", torch.cat((x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), closest_weights)
+                        #_, closest_weights = self.model(closest_x, return_weights=True)
+                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
@@ -192,19 +191,16 @@ class Classifier():
                         #feature_importances = torch.softmax(feature_importances, dim=1)
                         #entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                         output_adv = self.model(adversarial_x)
-                        secondary_loss = self.mse_criterion(weights, closest_weights)
-
                     else:
                         output = self.model(x)
                         output_adv = self.model(adversarial_x)
-                        secondary_loss = self.mse_criterion(weights, closest_weights)
 
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
                         output_adv = output_adv.squeeze(1)
-                        #closest_output = closest_output.squeeze(1)
+                        closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2) + secondary_loss
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2) + criterion(closest_output, closest_y)
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
 
