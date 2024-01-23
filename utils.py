@@ -6,7 +6,7 @@ import openml
 import torch
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder#, TargetEncoder
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, OneHotEncoder, TargetEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from scipy.stats import rankdata
@@ -272,7 +272,7 @@ def preprocess_dataset(
         numerical_preprocessor = ('numerical', StandardScaler(), numerical_features)
         dataset_preprocessors.append(numerical_preprocessor)
     if len(categorical_features) > 0 and encode_categorical:
-
+        """
         categorical_preprocessor = (
             'categorical_encoder',
             OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, categories=column_category_values),
@@ -292,7 +292,7 @@ def preprocess_dataset(
                 TargetEncoder(random_state=seed),
                 categorical_features,
             )
-        """
+
         dataset_preprocessors.append(categorical_preprocessor)
 
     column_transformer = ColumnTransformer(
