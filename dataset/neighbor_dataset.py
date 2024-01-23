@@ -24,7 +24,7 @@ class ContextDataset(Dataset):
             distances = torch.cdist(x.view(-1, x.size(0)), self.X[different_label_indices])
             distances = torch.squeeze(distances)
             # Find the 10 closest points
-            closest_indices = torch.argsort(distances)[:5]
+            closest_indices = torch.argsort(distances)[:10]
             examples_closest.append(closest_indices)
 
         self.examples_closest = torch.stack(examples_closest, dim=0)

@@ -89,11 +89,11 @@ class Classifier():
 
 
         # Create dataloader for training
-        #train_dataset = torch.utils.data.TensorDataset(
-        #    X_train,
-        #    y_train,
-        #)
-        train_dataset = ContextDataset(X_train, y_train)
+        train_dataset = torch.utils.data.TensorDataset(
+            X_train,
+            y_train,
+        )
+        #train_dataset = ContextDataset(X_train, y_train)
         #train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         T_0: int = max(
@@ -133,7 +133,8 @@ class Classifier():
             for batch_idx, batch in enumerate(train_loader):
 
                 iteration += 1
-                x, y, closest_x, closest_y = batch
+                #x, y, closest_x, closest_y = batch
+                x, y = batch
                 if self.mode != 'classification':
                     y = y.float()
 
@@ -148,16 +149,15 @@ class Classifier():
                     augmentation_prob=augmentation_probability,
                 )
                 self.model.train()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
                 if len(info) == 4:
                     x, y_1, y_2, lam = info
                     if self.interpretable:
-                        self.model.train()
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
                         #_, closest_weights = self.model(closest_x, return_weights=True)
-                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
+                        #closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
@@ -171,9 +171,9 @@ class Classifier():
 
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
-                        closest_output = closest_output.squeeze(1)
+                        #closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2) + criterion(closest_output, closest_y)
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)# + criterion(closest_output, closest_y)
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
                 else:
@@ -182,7 +182,7 @@ class Classifier():
                         output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
                         #_, closest_weights = self.model(closest_x, return_weights=True)
-                        closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
+                        #closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
                         #closest_output = self.model.calculate_predictions(closest_x, tree[0], tree[1], tree[2])
                         #_, _, tree = self.model(closest_x, return_weights=True, return_tree=True)
                         #closest_output = self.model.calculate_predictions(x, tree[0], tree[1], tree[2])
@@ -198,13 +198,14 @@ class Classifier():
                     if self.nr_classes == 2:
                         output = output.squeeze(1)
                         output_adv = output_adv.squeeze(1)
-                        closest_output = closest_output.squeeze(1)
+                        #closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2) + criterion(closest_output, closest_y)
+                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output_adv, y_2)# + criterion(closest_output, closest_y)
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
 
                 if self.interpretable:
+
 
                     # take all values except the last one (bias)
                     if self.nr_classes > 2:
@@ -322,6 +323,7 @@ class Classifier():
             if self.interpretable:
                 #weights.append(model_weights.detach().to('cpu').numpy())
                 weights.append(model_weights.detach().to('cpu').numpy())
+
         predictions = np.array(predictions)
         predictions = np.mean(predictions, axis=0)
         # take only the last prediction

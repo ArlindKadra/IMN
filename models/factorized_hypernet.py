@@ -27,12 +27,11 @@ class FactorizedHyperNet(nn.Module):
         self.dropout_rate = dropout_rate
 
         for _ in range(nr_blocks):
-            self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
+            self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
 
-        self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
-        self.extra_complexity = LogLinear(hidden_size, nr_features * self.factor_size * nr_classes)
-        self.interaction_dropout = nn.Dropout(self.dropout_rate)
-        self.main_weights_dropout = nn.Dropout(self.dropout_rate)
+        self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
+        self.extra_complexity = nn.Linear(hidden_size, nr_features * self.factor_size * nr_classes)
+        self.output_drop = nn.Dropout(self.dropout_rate)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -61,12 +60,13 @@ class FactorizedHyperNet(nn.Module):
         x = self.input_layer(x)
         x = self.batch_norm(x)
         x = self.act_func(x)
+        x = self.output_drop(x)
 
         for i in range(self.nr_blocks):
             x = self.blocks[i](x)
 
         w = self.output_layer(x)
-        w = self.main_weights_dropout(w)
+
         # b x n x 1
         input_matrix = input.view(-1, self.nr_features, 1)
 
@@ -74,7 +74,6 @@ class FactorizedHyperNet(nn.Module):
         input_matrix = torch.einsum("nij,njk->nik", input_matrix, input_matrix.transpose(1, 2))
 
         factorized_weights = self.extra_complexity(x)
-        factorized_weights = self.interaction_dropout(factorized_weights)
 
         # b x c x n x k
         factorized_weights = factorized_weights.view(self.nr_classes, -1,  self.nr_features, self.factor_size)
@@ -110,9 +109,10 @@ class FactorizedHyperNet(nn.Module):
             return x
 
     def make_residual_block(
-        self,
-        in_features: int,
-        output_features: int,
+            self,
+            in_features: int,
+            output_features: int,
+            dropout_rate: float = 0.25,
     ):
         """Creates a residual block.
 
@@ -128,16 +128,20 @@ class FactorizedHyperNet(nn.Module):
                 A residual block.
         """
 
-        return self.BasicBlock(in_features, output_features)
+        return self.BasicBlock(in_features, output_features, dropout_rate)
 
     class BasicBlock(nn.Module):
 
         def __init__(
-            self,
-            in_features: int,
-            output_features: int,
+                self,
+                in_features: int,
+                output_features: int,
+                dropout_rate: float,
         ):
             super(FactorizedHyperNet.BasicBlock, self).__init__()
+            self.dropout_rate = dropout_rate
+            self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
+            self.residual_dropout = nn.Dropout(self.dropout_rate)
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
             self.gelu = nn.GELU()
@@ -146,14 +150,16 @@ class FactorizedHyperNet(nn.Module):
 
         def forward(self, x):
             residual = x
+            residual = self.residual_dropout(residual)
 
             out = self.linear1(x)
             out = self.bn1(out)
             out = self.gelu(out)
+            out = self.hidden_state_dropout(out)
             out = self.linear2(out)
             out = self.bn2(out)
+            out = self.gelu(out)
 
             out += residual
-            out = self.gelu(out)
 
             return out

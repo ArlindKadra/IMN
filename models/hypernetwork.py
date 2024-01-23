@@ -34,7 +34,7 @@ class HyperNet(nn.Module):
         if unit_type != "basic":
             self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
         else:
-            self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
+            self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes, bias=False)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -68,22 +68,26 @@ class HyperNet(nn.Module):
         repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
         # if test mode
         if not self.training and not simple_weights:
-            """
+
             w_without_bias = w[:, :-1, :]
+            feature_vectors = []
             for i in range(w_without_bias.size(1)):
 
                 feature_i = w_without_bias[:, i, :]
                 # create figure
+                feature_i = torch.flatten(feature_i.detach()).cpu().numpy()
+                feature_vectors.append(feature_i)
 
+            fig = plt.figure()
+            plt.violinplot(feature_vectors)
+            #plt.hist(torch.flatten(feature_i.detach()).cpu().numpy())
+            #plt.ylabel('Frequency')
+            plt.xlabel('Feature')
+            plt.ylabel('Feature Weights')
+            plt.title("Feature Weight Distributions")
+            plt.savefig("feature_weights.pdf", bbox_inches='tight')
+            plt.close(fig)
 
-                fig = plt.figure()
-                plt.hist(torch.flatten(feature_i.detach()).cpu().numpy())
-                plt.ylabel('Frequency')
-                plt.xlabel('Value')
-                plt.title("Feature " + str(i))
-                plt.savefig("feature_" + str(i) + ".pdf", bbox_inches='tight')
-                plt.close(fig)
-            """
             w = repeated_input[:, :-1, :] * w[:, :-1, :]
 
         if return_weights:

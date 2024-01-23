@@ -30,9 +30,9 @@ class DTHyperNet(nn.Module):
         for i in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
 
-        self.feature_importances = LogLinear(hidden_size, self.nr_nodes * nr_features)
-        self.feature_splits = LogLinear(hidden_size, self.nr_nodes * nr_features)
-        self.leaf_node_classes = LogLinear(hidden_size, self.nr_leaf_nodes * nr_classes)
+        self.feature_importances = nn.Linear(hidden_size, self.nr_nodes * nr_features)
+        self.feature_splits = nn.Linear(hidden_size, self.nr_nodes * nr_features)
+        self.leaf_node_classes = nn.Linear(hidden_size, self.nr_leaf_nodes * nr_classes)
 
         #torch.nn.init.xavier_uniform_(self.feature_importances.weight)
         #torch.nn.init.xavier_uniform_(self.feature_splits.weight)
@@ -81,8 +81,8 @@ class DTHyperNet(nn.Module):
                 index_of_node = int((2 ** (depth_index - 1) * (
                             2 ** self.tree_depth + leaf_node_index) - 2 ** self.tree_depth) / 2 ** self.tree_depth)
                 p = int((leaf_node_index / 2 ** (self.tree_depth - depth_index)) % 2)
-                softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
-                #softmaxed_feature_importances = self.act_func(feature_importances[index_of_node])
+                #softmaxed_feature_importances = torch.softmax(feature_importances[index_of_node], dim=1)
+                softmaxed_feature_importances = self.act_func(feature_importances[index_of_node])
 
                 if not discretize:
                     node_sd = torch.sigmoid(torch.sum(softmaxed_feature_importances * x, dim=1) - torch.sum(

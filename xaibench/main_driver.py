@@ -138,7 +138,7 @@ def get_args():
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.1,
+        default=0.01,
         help="Weight decay",
     )
     parser.add_argument(

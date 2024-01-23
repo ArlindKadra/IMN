@@ -150,7 +150,7 @@ hypernet = HyperNet(
     nr_classes=1,
     nr_blocks=2,
     hidden_size=128,
-    unit_type='basic',
+    unit_type='exp',
 ).to('cpu')
 
 criterion = torch.nn.BCEWithLogitsLoss()
@@ -159,12 +159,12 @@ train_dataset = ContextDataset(X_train, y_train)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 # test_dataset = ContextDataset(X_test, y_test)
 # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=X_test.size(0), shuffle=False)
-optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.01, weight_decay=0.01)
-nr_epochs = 200
+optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.1, weight_decay=0.01)
+nr_epochs = 1000
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
 hypernet.train()
 specify_weight_norm = True
-weight_norm = 0.01
+weight_norm = 0
 mse_criteria = torch.nn.MSELoss()
 for epoch in range(nr_epochs):
     epoch_loss = 0
@@ -188,7 +188,7 @@ for epoch in range(nr_epochs):
         #differnce_weights = torch.abs(weights - closest_weights)
         #secondary_loss = torch.mean(torch.flatten(differnce_weights))
         #secondary_loss = mse_criteria(weights, closest_weights)
-        loss = main_loss + (weight_norm * l1_loss) + 0.5 * secondary_loss
+        loss = main_loss + (weight_norm * l1_loss) + secondary_loss
         loss.backward()
         optimizer.step()
         scheduler.step()

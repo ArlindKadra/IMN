@@ -58,7 +58,7 @@ class Experiment:
                     'nr_classes': nr_classes,
                     'nr_blocks': 2,
                     'hidden_size': 128,
-                    'unit_type': 'exp',
+                    'unit_type': 'basic',
                 }
                 categorical_indicator = [False] * X.shape[1]
                 attribute_names = [str(i) for i in range(X.shape[1])]
