@@ -103,6 +103,7 @@ class Classifier():
         scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
         #scheduler2 = CosineAnnealingLR(optimizer, T_max=nr_epochs * len(train_loader))
 
+        kl_div_loss = torch.nn.KLDivLoss(reduction='batchmean')
         def warmup(current_step: int):
             return float(current_step / (5 * len(train_loader)))
 
@@ -154,7 +155,7 @@ class Classifier():
                 if len(info) == 4:
                     x, y_1, y_2, lam = info
                     if self.interpretable:
-                        output, weights = self.model(x, return_weights=True)
+                        first_head_output, second_head_output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
                         #_, closest_weights = self.model(closest_x, return_weights=True)
                         #closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
@@ -166,20 +167,28 @@ class Classifier():
                         #feature_importances = torch.softmax(feature_importances, dim=1)
                         #entropy_loss = torch.mean(-feature_importances * torch.log(feature_importances))
                     else:
-                        output = self.model(x)
+                        first_head_output = self.model(x)
                         #closest_output = self.model(closest_x)
 
                     if self.nr_classes == 2:
-                        output = output.squeeze(1)
+                        first_head_output = first_head_output.squeeze(1)
+                        second_head_output = second_head_output.squeeze(1)
                         #closest_output = closest_output.squeeze(1)
 
-                    main_loss = lam * criterion(output, y_1) + (1 - lam) * criterion(output, y_2)# + criterion(closest_output, closest_y)
+                    main_loss = lam * criterion(first_head_output, y_1) + (1 - lam) * criterion(first_head_output, y_2)# + criterion(closest_output, closest_y)
+                    if self.mode == 'classification':
+                        if self.nr_classes > 2:
+                            main_loss += kl_div_loss(torch.log(self.softmax_act_func(second_head_output)), self.softmax_act_func(first_head_output))
+                        else:
+                            main_loss += kl_div_loss(torch.log(self.sigmoid_act_func(second_head_output)), self.sigmoid_act_func(first_head_output))
+                    else:
+                        main_loss += self.mse_criterion(second_head_output, first_head_output)
                     #main_loss += self.mse_criterion(closest_output, output)
                     #main_loss += entropy_loss
                 else:
                     x, adversarial_x, y_1, y_2, lam = info
                     if self.interpretable:
-                        output, weights = self.model(x, return_weights=True)
+                        first_head_output, second_head_output, weights = self.model(x, return_weights=True)
                         #output, weights = self.model(x, return_weights=True)
                         #_, closest_weights = self.model(closest_x, return_weights=True)
                         #closest_output = torch.einsum("ij,ijk->ik", torch.cat((closest_x, torch.ones(x.shape[0], 1).to(x.device)), dim=1), weights)
@@ -236,15 +245,15 @@ class Classifier():
                 if self.mode == 'classification':
                     # threshold the predictions if the model is binary
                     if self.nr_classes == 2:
-                        predictions = (self.sigmoid_act_func(output) > 0.5).int()
+                        predictions = (self.sigmoid_act_func(first_head_output) > 0.5).int()
                     else:
-                        predictions = torch.argmax(output, dim=1)
+                        predictions = torch.argmax(first_head_output, dim=1)
 
                     # calculate balanced accuracy with pytorch
                     if self.nr_classes == 2:
-                        batch_auroc = binary_auroc(output, y)
+                        batch_auroc = binary_auroc(first_head_output, y)
                     else:
-                        batch_auroc = multiclass_auroc(output, y, num_classes=self.nr_classes)
+                        batch_auroc = multiclass_auroc(first_head_output, y, num_classes=self.nr_classes)
 
                     train_auroc += batch_auroc
                 else:
@@ -306,9 +315,9 @@ class Classifier():
             self.model.eval()
             if self.interpretable:
                 if return_tree:
-                    output, model_weights = self.model(X_test, return_weights=True)
+                    output, _, model_weights = self.model(X_test, return_weights=True)
                 else:
-                    output, model_weights = self.model(X_test, return_weights=True)
+                    output, _, model_weights = self.model(X_test, return_weights=True)
             else:
                 output = self.model(X_test)
 

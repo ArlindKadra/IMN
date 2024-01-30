@@ -34,7 +34,9 @@ class HyperNet(nn.Module):
         if unit_type != "basic":
             self.output_layer = LogLinear(hidden_size, (nr_features + 1) * nr_classes)
         else:
-            self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes, bias=False)
+            self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
+
+        self.first_head = nn.Linear(hidden_size, nr_classes)
 
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
@@ -60,15 +62,16 @@ class HyperNet(nn.Module):
 
         w = self.output_layer(x)
         #w = self.output_drop(w)
+        first_head_output = self.first_head(x)
 
         input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
         w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
         #w = w.squeeze(2)
-        repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
+
         # if test mode
         if not self.training and not simple_weights:
-
+            repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
             w_without_bias = w[:, :-1, :]
             feature_vectors = []
             for i in range(w_without_bias.size(1)):
@@ -91,9 +94,9 @@ class HyperNet(nn.Module):
             w = repeated_input[:, :-1, :] * w[:, :-1, :]
 
         if return_weights:
-            return x,  w
+            return first_head_output, x,  w
         else:
-            return x
+            return first_head_output, x
 
     def make_residual_block(
         self,
@@ -145,8 +148,7 @@ class HyperNet(nn.Module):
             out = self.hidden_state_dropout(out)
             out = self.linear2(out)
             out = self.bn2(out)
-            out = self.gelu(out)
-
             out += residual
+            out = self.gelu(out)
 
             return out

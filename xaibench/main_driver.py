@@ -14,6 +14,7 @@ import json
 from src import datasets, model, explainer, metric, experiments, parse_utils
 
 
+from utils import get_dataset
 def get_args():
     parser = argparse.ArgumentParser("Driver for the explainability project")
     parser.add_argument(
@@ -120,13 +121,13 @@ def get_args():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=128,
+        default=64,
         help="Batch size",
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.01,
+        default=0.1,
         help="Learning rate",
     )
     parser.add_argument(
@@ -138,7 +139,7 @@ def get_args():
     parser.add_argument(
         "--weight_decay",
         type=float,
-        default=0.01,
+        default=0.1,
         help="Weight decay",
     )
     parser.add_argument(

@@ -60,14 +60,14 @@ class Experiment:
                     'hidden_size': 128,
                     'unit_type': 'basic',
                 }
-                categorical_indicator = [False] * X.shape[1]
-                attribute_names = [str(i) for i in range(X.shape[1])]
-                interpretable = True
-                output_directory = '.'
                 import torch
                 dev = torch.device(
                     'cuda') if torch.cuda.is_available() else torch.device('cpu')
 
+                categorical_indicator = [False for _ in range(X.shape[1])]
+                attribute_names = [f"feature_{i}" for i in range(X.shape[1])]
+                interpretable = self.args.interpretable
+                output_directory = self.args.output_dir
                 model = Classifier(
                     network_configuration,
                     args=self.args,

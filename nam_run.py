@@ -126,7 +126,10 @@ def main(args: argparse.Namespace):
         train_dataloaders=train_loader, #val_dataloaders=valloader)
     )
 
+    feat_outputs = model.calc_outputs(X_test.to('cpu'))
+    feat_outputs = torch.cat(feat_outputs, dim=-1)
     # Testing the trained model
+
 
     test_info = trainer.test(dataloaders=test_loader)
     auroc = test_info[0]['roc_auc_epoch']
@@ -149,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nr_epochs",
         type=int,
-        default=100,
+        default=10,
         help="Number of epochs",
     )
     parser.add_argument(

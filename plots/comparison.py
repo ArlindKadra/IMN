@@ -27,6 +27,7 @@ sns.set(
     style="white"
 )
 
+from autorank import autorank, plot_stats, create_report, latex_table
 
 def prepare_method_results(output_dir:str, method_name: str):
 
@@ -92,6 +93,10 @@ def distribution_methods(output_dir: str, method_names: list):
     #df['test_auroc'] = df['test_auroc'].fillna(0)
 
     #df['test_auroc'] = df['test_auroc'].fillna(0)
+    result = autorank(df, alpha=0.05, verbose=False)
+    plot_stats(result)
+    plt.show()
+    """
     plt.boxplot([df[df['method'] == method_name]['test_auroc'] for method_name in method_names])
     plt.xticks(range(1, len(method_names) + 1), pretty_names)
     # tilt the labels slightly
@@ -100,7 +105,7 @@ def distribution_methods(output_dir: str, method_names: list):
     plt.tick_params(axis='x', which='both', bottom=True)
     plt.ylabel('Gain')
     plt.savefig(os.path.join(output_dir, 'test_performance_comparison.pdf'), bbox_inches="tight")
-
+    """
 def rank_methods(output_dir: str, method_names: list):
 
     inn_wins = 0
@@ -129,7 +134,7 @@ def rank_methods(output_dir: str, method_names: list):
     result_dfs = []
     for method_name, method_result in zip(method_names, method_results):
         # store dataset ids of inn
-        if method_name == 'inn':
+        if method_name == 'tabresnet':
             inn_dataset_ids = method_result['dataset_id'].values
         result_dfs.append(method_result.assign(method=method_name))
 
@@ -148,9 +153,9 @@ def rank_methods(output_dir: str, method_names: list):
                 # get test performance of method on dataset
                 method_test_performance = df[(df['dataset_id'] == dataset_id) & (df['method'] == method_name)]['test_auroc'].values[0]
                 method_dataset_performances.append(method_test_performance)
-                if method_name == 'tabresnet':
+                if method_name == 'inn':
                     considered_methods.append(method_test_performance)
-                if method_name == 'catboost':
+                if method_name == 'inn_close':
                     considered_methods.append(method_test_performance)
                 print(f'{method_name} {dataset_id}: {method_test_performance}')
 
@@ -240,7 +245,67 @@ def prepare_cd_data(output_dir: str, method_names: list):
 
     df = pd.concat(df_results, axis=0)
     df['test_auroc'] = df['test_auroc'].fillna(1)
-    df.to_csv(os.path.join(output_dir, 'cd_data.csv'), index=False)
+    result = autorank(df, alpha=0.05, verbose=False)
+    plot_stats(result)
+    plt.show()
+    #df.to_csv(os.path.join(output_dir, 'cd_data.csv'), index=False)
+
+def prepare_cd_plot(output_dir: str, method_names: list):
+    sns.set(
+        rc={
+            'figure.figsize': (11.7, 8.27),
+            'font.size': 16,
+            'axes.titlesize': 16,
+            'axes.labelsize': 16,
+            'xtick.labelsize': 16,
+            'ytick.labelsize': 16,
+            'legend.fontsize': 16,
+        },
+        style="white"
+    )
+    pretty_method_names = {
+        'inn': 'INN',
+        'inn_v2': 'INN 2',
+        'random_forest': 'Random Forest',
+        'catboost': 'CatBoost',
+        'tabresnet': 'TabResNet',
+        'decision_tree': 'Decision Tree',
+        'logistic_regression': 'Logistic Regression',
+        'tabnet': 'TabNet',
+        'inn_dtree': 'INDTree',
+        'nam': 'NAM',
+        'inn_exp': 'INN',
+    }
+    data_df = pd.DataFrame()
+    for method_name in method_names:
+        # remove column from df
+        try:
+            method_result = prepare_method_results(output_dir, method_name).drop(columns=['train_auroc'])
+        except KeyError:
+            method_result = prepare_method_results(output_dir, method_name)
+
+        # convert from accuracy to error
+        data_df[pretty_method_names[method_name]] = method_result['test_auroc']
+
+    # if a column has a nan value , drow the row
+    data_df = data_df.dropna(axis=0, how='any')
+    # read csv
+    file_path = os.path.expanduser(
+        os.path.join(
+            '~',
+            'Desktop',
+            'PhD',
+            'Projekte',
+            'INN',
+            'pivoted_data.csv'
+        )
+    )
+    data_df = pd.read_csv(file_path)
+    data_df = data_df.drop(columns=['dataset_name'])
+    result = autorank(data_df, alpha=0.05, verbose=False)
+    plot_stats(result, allow_insignificant=True)
+    plt.savefig(os.path.join(output_dir, 'cd_plot.pdf'), bbox_inches="tight")
+    #df.to_csv(os.path.join(output_dir, 'cd_data.csv'), index=False)
 
 def calculate_method_time(output_dir: str, method_name: str):
 
@@ -375,13 +440,14 @@ result_directory = os.path.expanduser(
     )
 )
 
-#method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboost', 'tabnet', 'inn', 'inn_dtree', 'tabresnet']
-method_names = ['tabresnet', 'catboost', 'tabnet', 'random_forest', 'inn']
-#method_names = ['inn', 'inn_close']
+#method_names = ['random_forest', 'catboost', 'tabnet', 'inn', 'tabresnet']
+#method_names = ['tabresnet', 'catboost', 'tabnet', 'random_forest', 'inn']
+method_names = ['catboost', 'tabresnet']
+#method_names = ['decision_tree', 'logistic_regression', 'inn']
 #rank_methods(result_directory, method_names)
-prepare_cd_data(result_directory, method_names)
+#prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
-#distribution_methods(result_directory, method_names)
+prepare_cd_plot(result_directory, method_names)
 #calculate_method_times(result_directory, method_names)
 
 #prepare_result_table(result_directory, method_names, mode='test')

@@ -4,7 +4,7 @@ import os
 import time
 
 import numpy as np
-from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error
 import torch
 import wandb
 
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=24,
         help='Dataset id',
     )
     parser.add_argument(
