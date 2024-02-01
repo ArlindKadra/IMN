@@ -203,23 +203,42 @@ class Classifier():
 
         return self
 
-    def predict(self, X_test, y_test=None, return_weights=True):
+    def predict(
+            self,
+            X_test,
+            y_test=None,
+            return_weights=False,
+            return_tree=False,
+    ):
 
         # check if X_test is a DataFrame
         if isinstance(X_test, pd.DataFrame):
             X_test = X_test.to_numpy()
+
         X_test = torch.tensor(X_test).float()
+
         X_test = X_test.to(self.dev)
+        if y_test is not None:
+            if isinstance(y_test, pd.DataFrame):
+                y_test = y_test.to_numpy()
+            y_test = torch.tensor(y_test).float() if self.nr_classes == 2 else torch.tensor(y_test).long()
+        else:
+            y_test = torch.zeros(X_test.size(0)).long()
 
         predictions = []
         weights = []
+
         for snapshot_idx, snapshot in enumerate(self.ensemble_snapshots):
             self.model.load_state_dict(snapshot)
             self.model.eval()
             if self.interpretable:
-                output, model_weights = self.model(X_test, return_weights=True)
+                if return_tree:
+                    output, model_weights = self.model(X_test, return_weights=True)
+                else:
+                    output, model_weights = self.model(X_test, return_weights=True)
             else:
                 output = self.model(X_test)
+
             output = output.squeeze(1)
             if self.mode == 'classification':
                 if self.nr_classes > 2:
@@ -229,10 +248,13 @@ class Classifier():
 
             predictions.append([output.detach().to('cpu').numpy()])
             if self.interpretable:
-                weights.append([model_weights.detach().to('cpu').numpy()])
+                #weights.append(model_weights.detach().to('cpu').numpy())
+                weights.append(model_weights.detach().to('cpu').numpy())
 
         predictions = np.array(predictions)
         predictions = np.mean(predictions, axis=0)
+        # take only the last prediction
+        #predictions = predictions[-1, :, :]
         predictions = np.squeeze(predictions)
 
         if self.interpretable and return_weights:
@@ -240,17 +262,22 @@ class Classifier():
             weights = np.squeeze(weights)
             if len(weights.shape) > 2:
                 weights = weights[-1, :, :]
+                #weights = np.mean(weights, axis=0)
                 weights = np.squeeze(weights)
+            # take all values except the last one (bias)
+            #weights = weights[:, :-1]
+            #test_examples = X_test.detach().to('cpu').numpy()
+            #weights = weights * test_examples
 
-            weights = weights[:, :-1]
             if self.mode == 'classification':
                 if self.nr_classes == 2:
                     act_predictions = (predictions > 0.5).astype(int)
                 else:
                     act_predictions = np.argmax(predictions, axis=1)
 
+
                 selected_weights = []
-                correct_test_examples = []
+                #correct_test_examples = []
                 for test_example_idx in range(weights.shape[0]):
                     # select the weights for the predicted class
                     if y_test[test_example_idx] == act_predictions[test_example_idx]:
@@ -258,21 +285,24 @@ class Classifier():
                             selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
                         else:
                             selected_weights.append(weights[test_example_idx, :])
-                        correct_test_examples.append(test_example_idx)
+                        #correct_test_examples.append(test_example_idx)
                 weights = np.array(selected_weights)
-                correct_test_examples = np.array(correct_test_examples)
-            weights_importances = generate_weight_importances_top_k(weights, 5)
-            weights_averages = np.mean(weights, axis=0)
+                #correct_test_examples = np.array(correct_test_examples)
+
+            """
+            #weights_importances = generate_weight_importances_top_k(weights, 5)
+            #
             # normalize the weights
-            weights_averages = weights_averages / np.sum(weights_averages)
-
-            test_examples = X_test.detach().to('cpu').numpy()
-            correct_test_examples = test_examples[correct_test_examples]
-
-            weights = weights * correct_test_examples
-            weights = np.mean(np.abs(weights), axis=0)
-            weights = weights / np.sum(weights)
-
+            #weights_averages = weights_averages / np.sum(weights_averages)
+            """
+            #test_examples = X_test.detach().to('cpu').numpy()
+            #correct_test_examples = test_examples[correct_test_examples]
+            #weights = weights * correct_test_examples
+            """
+            #weights = np.mean(np.abs(weights), axis=0)
+            #weights = weights / np.sum(weights)
+            """
+        #weights = np.mean(weights, axis=0)
         if self.interpretable:
             if return_weights:
                 return predictions, weights
