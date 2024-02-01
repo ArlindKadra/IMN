@@ -185,15 +185,20 @@ def main(args: argparse.Namespace):
 
     if interpretable:
         # print attribute name and weight for the top 10 features
+        # average the weight_importances
+        weight_importances = np.mean(weight_importances, axis=0)
+        #weight_importances = weight_importances[:-1]
         sorted_idx = np.argsort(weight_importances)[::-1]
-        top_10_features = [attribute_names[i] for i in sorted_idx[:10]]
+        top_10_features = [attribute_names[i] for i in sorted_idx]
         print("Top 10 features: %s" % top_10_features)
         # print the weights of the top 10 features
-        print(weight_importances[sorted_idx[:10]])
-        wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx[:10]]
+        print(weight_importances[sorted_idx])
         output_info['top_10_features'] = top_10_features
-        output_info['top_10_features_weights'] = weight_importances[sorted_idx[:10]].tolist()
+        output_info['top_10_features_weights'] = weight_importances[sorted_idx].tolist()
+
+        if use_wandb:
+            wandb.run.summary["Top_10_features"] = top_10_features
+            wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
