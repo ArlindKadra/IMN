@@ -10,7 +10,6 @@ class HyperNet(nn.Module):
         nr_blocks: int = 0,
         hidden_size: int = 64,
         dropout_rate: float = 0.25,
-        unit_type: str = "basic",
         **kwargs,
     ):
         super(HyperNet, self).__init__()
@@ -27,7 +26,6 @@ class HyperNet(nn.Module):
 
         for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
-
 
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
