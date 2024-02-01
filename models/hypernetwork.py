@@ -9,6 +9,8 @@ class HyperNet(nn.Module):
         nr_classes: int = 10,
         nr_blocks: int = 0,
         hidden_size: int = 64,
+        dropout_rate: float = 0.25,
+        unit_type: str = "basic",
         **kwargs,
     ):
         super(HyperNet, self).__init__()
@@ -20,10 +22,12 @@ class HyperNet(nn.Module):
         self.nr_features = nr_features
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
-        self.second_head = nn.Linear(hidden_size, nr_classes)
+        self.dropout_rate = dropout_rate
+        self.output_drop = nn.Dropout(self.dropout_rate)
 
         for _ in range(nr_blocks):
-            self.blocks.append(self.make_residual_block(hidden_size, hidden_size))
+            self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
+
 
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
@@ -36,7 +40,7 @@ class HyperNet(nn.Module):
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)
 
-    def forward(self, x, return_weights: bool = False):
+    def forward(self, x, return_weights: bool = False, simple_weights: bool = False):
 
         x = x.view(-1, self.nr_features)
         input = x
@@ -44,6 +48,7 @@ class HyperNet(nn.Module):
         x = self.input_layer(x)
         x = self.batch_norm(x)
         x = self.act_func(x)
+        x = self.output_drop(x)
 
         for i in range(self.nr_blocks):
             x = self.blocks[i](x)
@@ -53,9 +58,15 @@ class HyperNet(nn.Module):
         input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
         w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
+        
+        # if test mode
+        if not self.training and not simple_weights:
+            
+            repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
+            w = repeated_input[:, :-1, :] * w[:, :-1, :]
 
         if return_weights:
-            return x, w
+            return x,  w
         else:
             return x
 
@@ -63,6 +74,7 @@ class HyperNet(nn.Module):
         self,
         in_features: int,
         output_features: int,
+        dropout_rate: float = 0.25,
     ):
         """Creates a residual block.
 
@@ -78,7 +90,7 @@ class HyperNet(nn.Module):
                 A residual block.
         """
 
-        return self.BasicBlock(in_features, output_features)
+        return self.BasicBlock(in_features, output_features, dropout_rate)
 
     class BasicBlock(nn.Module):
 
@@ -86,8 +98,12 @@ class HyperNet(nn.Module):
             self,
             in_features: int,
             output_features: int,
+            dropout_rate: float,
         ):
             super(HyperNet.BasicBlock, self).__init__()
+            self.dropout_rate = dropout_rate
+            self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
+            self.residual_dropout = nn.Dropout(self.dropout_rate)
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
             self.gelu = nn.GELU()
@@ -96,13 +112,14 @@ class HyperNet(nn.Module):
 
         def forward(self, x):
             residual = x
+            residual = self.residual_dropout(residual)
 
             out = self.linear1(x)
             out = self.bn1(out)
             out = self.gelu(out)
+            out = self.hidden_state_dropout(out)
             out = self.linear2(out)
             out = self.bn2(out)
-
             out += residual
             out = self.gelu(out)
 
