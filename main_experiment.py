@@ -92,6 +92,7 @@ def main(args: argparse.Namespace):
         'nr_classes': nr_classes if nr_classes > 2 else 1,
         'nr_blocks': args.nr_blocks,
         'hidden_size': args.hidden_size,
+        'dropout_rate': args.dropout_rate,
     }
 
     X_train = np.array(examples_train)
@@ -132,8 +133,8 @@ def main(args: argparse.Namespace):
 
     model.fit(X_train, y_train)
     if interpretable:
-        test_predictions, weight_importances = model.predict(X_test, y_test)
-        train_predictions, _ = model.predict(X_train, y_train)
+        test_predictions, weight_importances = model.predict(X_test, y_test, return_weights=True)
+        train_predictions = model.predict(X_train, y_train)
     else:
         test_predictions = model.predict(X_test, y_test)
         train_predictions = model.predict(X_train, y_test)
@@ -195,10 +196,8 @@ def main(args: argparse.Namespace):
         print(weight_importances[sorted_idx])
         output_info['top_10_features'] = top_10_features
         output_info['top_10_features_weights'] = weight_importances[sorted_idx].tolist()
-
-        if use_wandb:
-            wandb.run.summary["Top_10_features"] = top_10_features
-            wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
+        wandb.run.summary["Top_10_features"] = top_10_features
+        wandb.run.summary["Top_10_features_weights"] = weight_importances[sorted_idx]
 
     with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
         json.dump(output_info, f)
@@ -255,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight_norm",
         type=float,
-        default=1,
+        default=0.1,
         help="Weight decay",
     )
     parser.add_argument(
@@ -281,6 +280,12 @@ if __name__ == "__main__":
         type=float,
         default=0.2,
         help="Test size",
+    )
+    parser.add_argument(
+        "--dropout_rate",
+        type=float,
+        default=0.25,
+        help='Test size',
     )
     parser.add_argument(
         "--nr_restarts",
