@@ -1,6 +1,4 @@
 import argparse
-import json
-import os
 import time
 from typing import Dict
 
@@ -41,12 +39,13 @@ def main(
     class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
     nr_classes = len(unique_classes)
 
-    wandb.init(
-        project='INN',
-        config=args,
-    )
+    if not args.disable_wandb:
+        wandb.init(
+            project='INN',
+            config=args,
+        )
 
-    wandb.config['dataset_name'] = dataset_name
+        wandb.config['dataset_name'] = dataset_name
     start_time = time.time()
     # count number of categorical variables
     nr_categorical = np.sum(categorical_indicator)
@@ -155,14 +154,16 @@ def main(
     print("Top 10 features: %s" % top_10_features)
     print("Top 10 feature importances: %s" % top_10_importances)
 
-    wandb.run.summary["Train:auroc"] = train_auroc
-    wandb.run.summary["Train:accuracy"] = train_accuracy
-    wandb.run.summary["Test:auroc"] = test_auroc
-    wandb.run.summary["Test:accuracy"] = test_accuracy
-    wandb.run.summary["Top_10_features"] = top_10_features
-    wandb.run.summary["Top_10_features_weights"] = top_10_importances
-    wandb.run.summary["Train:time"] = train_time
-    wandb.run.summary["Inference:time"] = inference_time
+    if not args.disable_wandb:
+        wandb.run.summary["Train:auroc"] = train_auroc
+        wandb.run.summary["Train:accuracy"] = train_accuracy
+        wandb.run.summary["Test:auroc"] = test_auroc
+        wandb.run.summary["Test:accuracy"] = test_accuracy
+        wandb.run.summary["Top_10_features"] = top_10_features
+        wandb.run.summary["Top_10_features_weights"] = top_10_importances
+        wandb.run.summary["Train:time"] = train_time
+        wandb.run.summary["Inference:time"] = inference_time
+        wandb.finish()
 
     output_info = {
         'train_auroc': train_auroc,
@@ -174,7 +175,5 @@ def main(
         'train_time': train_time,
         'inference_time': inference_time,
     }
-
-    wandb.finish()
 
     return output_info

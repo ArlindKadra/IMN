@@ -177,6 +177,11 @@ if __name__ == "__main__":
         default=100,
         help='Number of trials for hyperparameter tuning',
     )
+    parser.add_argument(
+        '--disable_wandb',
+        action='store_true',
+        help='Whether to disable wandb logging',
+    )
 
     args = parser.parse_args()
 
