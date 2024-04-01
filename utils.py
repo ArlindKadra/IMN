@@ -332,6 +332,7 @@ def preprocess_dataset(
     test_split_size: float = 0.2,
     seed: int = 11,
     encoding_type: str = "ordinal",
+    hpo_tuning: bool = False,
 ) -> Dict:
     """Preprocess the dataset.
 
@@ -400,6 +401,15 @@ def preprocess_dataset(
         stratify=y,
     )
 
+    if hpo_tuning:
+        X_train, X_valid, y_train, y_valid = train_test_split(
+            X_train,
+            y_train,
+            test_size=test_split_size / (1 - test_split_size),
+            random_state=seed,
+            stratify=y_train,
+        )
+
     # pandas series number of unique values
     nr_classes = y_train.nunique()
 
@@ -408,6 +418,10 @@ def preprocess_dataset(
     label_encoder.fit(y_train)
     y_train = label_encoder.transform(y_train)
     y_test = label_encoder.transform(y_test)
+
+    if hpo_tuning:
+        y_valid = label_encoder.transform(y_valid)
+
 
     numerical_features = [i for i in range(len(categorical_indicator)) if not categorical_indicator[i]]
     categorical_features = [i for i in range(len(categorical_indicator)) if categorical_indicator[i]]
@@ -456,6 +470,13 @@ def preprocess_dataset(
     X_train = column_transformer.fit_transform(X_train, y_train)
     X_test = column_transformer.transform(X_test)
 
+    if hpo_tuning:
+        X_valid = column_transformer.transform(X_valid)
+
+    # convert to dataframe and detect dtypes
+    # dataframe from numpy array
+    # create dataframe from numpy array
+
     if len(numerical_features) > 0:
         new_categorical_indicator = [False] * len(numerical_features)
         new_attribute_names = [attribute_names[i] for i in numerical_features]
@@ -485,15 +506,24 @@ def preprocess_dataset(
     X_train = pd.DataFrame(X_train, columns=new_attribute_names)
     X_test = pd.DataFrame(X_test, columns=new_attribute_names)
 
+    if hpo_tuning:
+        X_valid = pd.DataFrame(X_valid, columns=new_attribute_names)
+
     if encoding_type == "ordinal":
         X_train = X_train.astype(column_types)
         X_test = X_test.astype(column_types)
+
+        if hpo_tuning:
+            X_valid = X_valid.astype(column_types)
 
     # pandas fill missing values for numerical columns with zeroes
     for cat_indicator, column_name in zip(new_categorical_indicator, X_train.keys()):
         if not cat_indicator:
             X_train[column_name] = X_train[column_name].fillna(0)
             X_test[column_name] = X_test[column_name].fillna(0)
+
+            if hpo_tuning:
+                X_valid[column_name] = X_valid[column_name].fillna(0)
         else:
             # categorical variables where not encoded
             if not encode_categorical:
@@ -505,6 +535,10 @@ def preprocess_dataset(
                 X_test[column_name].cat.reorder_categories(np.roll(X_test[column_name].cat.categories, 1))
                 X_test[column_name] = X_test[column_name].fillna('missing')
 
+                if hpo_tuning:
+                    X_valid[column_name] = X_valid[column_name].cat.add_categories('missing')
+                    X_valid[column_name].cat.reorder_categories(np.roll(X_valid[column_name].cat.categories, 1))
+                    X_valid[column_name] = X_valid[column_name].fillna('missing')
     info_dict = {
         'X_train': X_train,
         'X_test': X_test,
@@ -514,16 +548,13 @@ def preprocess_dataset(
         'attribute_names': new_attribute_names,
     }
 
+    if hpo_tuning:
+        info_dict['X_valid'] = X_valid
+        info_dict['y_valid'] = y_valid
+
     return info_dict
 
-
-def get_dataset(
-    dataset_id: int,
-    test_split_size: float = 0.2,
-    seed: int = 11,
-    encode_categorical: bool = True,
-    encoding_type: str = 'ordinal',
-) -> Dict:
+def get_dataset(dataset_id: int, test_split_size=0.2, seed=11, encode_categorical: bool = True, encoding_type: str ='ordinal', hpo_tuning=False) -> Dict:
     """Get the dataset from OpenML and preprocess it.
 
     Args:
@@ -560,6 +591,7 @@ def get_dataset(
         test_split_size=test_split_size,
         seed=seed,
         encoding_type=encoding_type,
+        hpo_tuning=hpo_tuning,
     )
     info_dict['dataset_name'] = dataset_name
 

@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+from typing import Dict
 
 from catboost import CatBoostClassifier
 import numpy as np
@@ -15,54 +16,36 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.utils.class_weight import compute_class_weight
 import wandb
 
-from utils import get_dataset
 
+def main(
+    args: argparse.Namespace,
+    hp_config: Dict,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    categorical_indicator: np.ndarray,
+    attribute_names: np.ndarray,
+    dataset_name: str,
+) -> Dict:
 
-def main(args: argparse.Namespace):
 
     np.random.seed(args.seed)
-
-    dataset_id = args.dataset_id
-    test_split_size = args.test_split_size
     seed = args.seed
-
-    encode_categorical_variables = {
-        'catboost': False,
-        'decision_tree': True,
-        'logistic_regression': True,
-        'random_forest': True,
-        'tabnet': False,
-    }
-
-    info = get_dataset(
-        dataset_id,
-        test_split_size=test_split_size,
-        seed=seed,
-        encode_categorical=encode_categorical_variables[args.model_name],
-    )
-
-    dataset_name = info['dataset_name']
-    X_train = info['X_train']
-    X_test = info['X_test']
-    y_train = info['y_train']
-    y_test = info['y_test']
-    categorical_indicator = info['categorical_indicator']
 
     categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
     # count number of unique categories per pandas column
     categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
-    attribute_names = info['attribute_names']
-
-    # the reference to info is not needed anymore
-    del info
 
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
     nr_classes = len(unique_classes)
+
     wandb.init(
         project='INN',
         config=args,
     )
+
     wandb.config['dataset_name'] = dataset_name
     start_time = time.time()
     # count number of categorical variables
@@ -73,6 +56,15 @@ def main(args: argparse.Namespace):
         "seed": seed,
         "device_name": "cuda",
     }
+
+    basic_hp_config_logistic = {
+        'random_state': seed,
+        'class_weight': 'balanced',
+        'multi_class': 'multinomial' if nr_classes > 2 else 'ovr',
+    }
+
+    if hp_config is not None:
+        basic_hp_config_logistic.update(hp_config)
 
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(random_state=seed, class_weight='balanced')
@@ -87,7 +79,7 @@ def main(args: argparse.Namespace):
     elif args.model_name == 'decision_tree':
         model = DecisionTreeClassifier(random_state=seed)
     elif args.model_name == 'logistic_regression':
-        model = LogisticRegression(random_state=seed, class_weight='balanced', multi_class='multinomial' if nr_classes > 2 else 'ovr')
+        model = LogisticRegression(**basic_hp_config_logistic)
     elif args.model_name == 'tabnet':
         if nr_categorical > 0:
             cat_attribute_names = [attribute_names[i] for i in categorical_indices]
@@ -118,6 +110,8 @@ def main(args: argparse.Namespace):
     else:
         model.fit(X_train, y_train)
 
+    train_time = time.time() - start_time
+
     train_predictions_labels = model.predict(X_train)
     train_predictions_probabilities = model.predict_proba(X_train)
     if nr_classes == 2:
@@ -132,6 +126,8 @@ def main(args: argparse.Namespace):
     train_accuracy = accuracy_score(y_train, train_predictions_labels)
     test_auroc = roc_auc_score(y_test, test_predictions_probabilities, multi_class='raise' if nr_classes == 2 else 'ovo')
     test_accuracy = accuracy_score(y_test, test_predictions_labels)
+
+    inference_time = time.time() - train_time - start_time
 
     if args.model_name == 'logistic_regression':
         # get the feature importances
@@ -165,8 +161,9 @@ def main(args: argparse.Namespace):
     wandb.run.summary["Test:accuracy"] = test_accuracy
     wandb.run.summary["Top_10_features"] = top_10_features
     wandb.run.summary["Top_10_features_weights"] = top_10_importances
+    wandb.run.summary["Train:time"] = train_time
+    wandb.run.summary["Inference:time"] = inference_time
 
-    end_time = time.time()
     output_info = {
         'train_auroc': train_auroc,
         'train_accuracy': train_accuracy,
@@ -174,53 +171,10 @@ def main(args: argparse.Namespace):
         'test_accuracy': test_accuracy,
         'top_10_features': top_10_features,
         'top_10_features_weights': top_10_importances,
-        'time': end_time - start_time,
+        'train_time': train_time,
+        'inference_time': inference_time,
     }
-
-    output_directory = os.path.join(args.output_dir, f'{args.model_name}', f'{dataset_id}', f'{seed}')
-    os.makedirs(output_directory, exist_ok=True)
-
-    with open(os.path.join(output_directory, 'output_info.json'), 'w') as f:
-        json.dump(output_info, f)
 
     wandb.finish()
 
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument(
-        '--seed',
-        type=int,
-        default=0,
-        help='Random seed'
-    )
-    parser.add_argument(
-        '--dataset_id',
-        type=int,
-        default=31,
-        help='Dataset id'
-    )
-    parser.add_argument(
-        '--test_split_size',
-        type=float,
-        default=0.2,
-        help='Test size'
-    )
-    parser.add_argument(
-        '--model_name',
-        type=str,
-        default='tabnet',
-        help='The name of the baseline model to use',
-    )
-    parser.add_argument(
-        '--output_dir',
-        type=str,
-        default='.',
-        help='Directory to save the results',
-    )
-
-    args = parser.parse_args()
-
-    main(args)
+    return output_info
