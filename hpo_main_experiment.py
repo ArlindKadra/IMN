@@ -24,6 +24,17 @@ def hpo_space_imn(trial: optuna.trial.Trial) -> Dict:
 
     return params
 
+def hpo_space_tabresnet(trial: optuna.trial.Trial) -> Dict:
+
+    params = {
+        'nr_epochs': trial.suggest_int('nr_epochs', 10, 500),
+        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True),
+        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256, 512]),
+        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
+        'dropout_rate': trial.suggest_float('dropout_rate', 0, 0.5),
+    }
+
+    return params
 
 def objective(
     trial: optuna.trial.Trial,
@@ -39,6 +50,8 @@ def objective(
 
     if args.interpretable:
         hp_config = hpo_space_imn(trial)
+    else:
+        hp_config = hpo_space_tabresnet(trial)
 
     output_info = main(
         args,
@@ -96,16 +109,28 @@ def hpo_main(args):
             direction='maximize',
             sampler=optuna.samplers.TPESampler(seed=seed),
         )
-        study.enqueue_trial(
-            {
-                'nr_epochs': 500,
-                'batch_size': 64,
-                'learning_rate': 0.01,
-                'weight_decay': 0.01,
-                'weight_norm': 0.1,
-                'dropout_rate': 0.25,
-            }
-        )
+
+        if args.interpretable:
+            study.enqueue_trial(
+                {
+                    'nr_epochs': 500,
+                    'batch_size': 64,
+                    'learning_rate': 0.01,
+                    'weight_decay': 0.01,
+                    'weight_norm': 0.1,
+                    'dropout_rate': 0.25,
+                }
+            )
+        else:
+            study.enqueue_trial(
+                {
+                    'nr_epochs': 500,
+                    'batch_size': 64,
+                    'learning_rate': 0.01,
+                    'weight_decay': 0.01,
+                    'dropout_rate': 0.25,
+                }
+            )
 
         try:
             study.optimize(
