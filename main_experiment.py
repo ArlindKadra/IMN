@@ -86,7 +86,7 @@ def main(
     args.learning_rate = hp_config['learning_rate']
     args.batch_size = hp_config['batch_size']
     args.weight_decay = hp_config['weight_decay']
-    args.weight_norm = hp_config['weight_norm']
+    args.weight_norm = hp_config['weight_norm'] if 'weight_norm' in hp_config else 0.1
     args.dropout_rate = hp_config['dropout_rate']
 
     model = Classifier(
