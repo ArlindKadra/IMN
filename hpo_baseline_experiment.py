@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from typing import Dict
 
 import optuna
 import numpy as np
@@ -10,13 +11,25 @@ from baseline_experiment import main
 from utils import get_dataset
 
 
-def hpo_space_logistic(trial: optuna.trial.Trial) -> dict:
+def hpo_space_logistic(trial: optuna.trial.Trial) -> Dict:
 
     params = {
         'C': trial.suggest_float('C', 1e-5, 5),
         'penalty': trial.suggest_categorical('penalty', ['l2', 'none']),
         'max_iter': trial.suggest_int('max_iter', 50, 500),
         'fit_intercept': trial.suggest_categorical('fit_intercept', [True, False]),
+    }
+
+    return params
+
+def hpo_space_dtree(trial: optuna.trial.Trial) -> Dict:
+
+    params = {
+        'criterion': trial.suggest_categorical('criterion', ['gini', 'entropy']),
+        'max_depth': trial.suggest_int('max_depth', 1, 21),
+        'min_samples_split': trial.suggest_int('min_samples_split', 2, 11),
+        'max_leaf_nodes': trial.suggest_int('max_leaf_nodes', 3, 26),
+        'splitter': trial.suggest_categorical('splitter', ['best', 'random']),
     }
 
     return params
@@ -35,6 +48,8 @@ def objective(
 
     if args.model_name == 'logistic_regression':
         hp_config = hpo_space_logistic(trial)
+    elif args.model_name == 'decision_tree':
+        hp_config = hpo_space_dtree(trial)
 
     output_info = main(
         args,

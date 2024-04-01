@@ -62,9 +62,16 @@ def main(
         'class_weight': 'balanced',
         'multi_class': 'multinomial' if nr_classes > 2 else 'ovr',
     }
+    basic_hp_config_dtree = {
+        'random_state': seed,
+        'class_weight': 'balanced',
+    }
 
     if hp_config is not None:
-        basic_hp_config_logistic.update(hp_config)
+        if args.model_name == 'logistic_regression':
+            basic_hp_config_logistic.update(hp_config)
+        elif args.model_name == 'decision_tree':
+            basic_hp_config_dtree.update(hp_config)
 
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
@@ -77,7 +84,7 @@ def main(
             random_seed=seed,
         )
     elif args.model_name == 'decision_tree':
-        model = DecisionTreeClassifier(random_state=seed)
+        model = DecisionTreeClassifier(**basic_hp_config_dtree)
     elif args.model_name == 'logistic_regression':
         model = LogisticRegression(**basic_hp_config_logistic)
     elif args.model_name == 'tabnet':
