@@ -96,6 +96,16 @@ def hpo_main(args):
             direction='maximize',
             sampler=optuna.samplers.TPESampler(seed=seed),
         )
+        study.enqueue_trial(
+            {
+                'nr_epochs': 500,
+                'batch_size': 64,
+                'learning_rate': 0.01,
+                'weight_decay': 0.01,
+                'weight_norm': 0.1,
+                'dropout_rate': 0.25,
+            }
+        )
 
         try:
             study.optimize(
