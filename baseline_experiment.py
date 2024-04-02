@@ -66,22 +66,27 @@ def main(
         'random_state': seed,
         'class_weight': 'balanced',
     }
+    basic_hp_config_catboost = {
+        'task_type': 'GPU',
+        'devices': '0',
+        'loss_function': 'MultiClass' if nr_classes > 2 else 'Logloss',
+        'random_state': seed,
+        'class_weights': class_weights,
+    }
 
     if hp_config is not None:
         if args.model_name == 'logistic_regression':
             basic_hp_config_logistic.update(hp_config)
         elif args.model_name == 'decision_tree':
             basic_hp_config_dtree.update(hp_config)
+        elif args.model_name == 'catboost':
+            basic_hp_config_catboost.update(hp_config)
 
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
     elif args.model_name == 'catboost':
         model = CatBoostClassifier(
-            task_type='GPU',
-            devices='0',
-            loss_function='MultiClass' if nr_classes > 2 else 'Logloss',
-            class_weights=class_weights,
-            random_seed=seed,
+            **basic_hp_config_catboost,
         )
     elif args.model_name == 'decision_tree':
         model = DecisionTreeClassifier(**basic_hp_config_dtree)

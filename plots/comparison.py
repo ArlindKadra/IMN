@@ -12,7 +12,6 @@ import numpy as np
 import scipy.stats as stats
 import matplotlib
 matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 sns.set(
     rc={
         'figure.figsize': (11.7, 8.27),
@@ -45,7 +44,7 @@ def prepare_method_results(output_dir:str, method_name: str):
                 with open(os.path.join(seed_dir, 'output_info.json'), 'r') as f:
                     seed_result = json.load(f)
                     seed_test_balanced_accuracy.append(seed_result['test_auroc'])
-                    seed_train_balanced_accuracy.append(seed_result['train_auroc'][-1] if method_name == 'inn' else seed_result['train_auroc'])
+                    seed_train_balanced_accuracy.append(seed_result['train_auroc'] if method_name == 'inn' else seed_result['train_auroc'])
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
         result_dict['dataset_id'].append(dataset_id)
@@ -177,13 +176,13 @@ def analyze_results(output_dir: str, method_names: list):
 def prepare_cd_data(output_dir: str, method_names: list):
 
     pretty_method_names = {
-        'inn': 'INN',
+        'inn': 'IMN HPO',
         'inn_v2': 'INN 2',
         'random_forest': 'Random Forest',
         'catboost': 'CatBoost',
         'tabresnet': 'TabResNet',
-        'decision_tree': 'Decision Tree',
-        'logistic_regression': 'Logistic Regression',
+        'decision_tree': 'Decision Tree HPO',
+        'logistic_regression': 'Logistic Regression HPO',
         'tabnet': 'TabNet',
     }
     method_results = {}
@@ -199,8 +198,8 @@ def prepare_cd_data(output_dir: str, method_names: list):
 
     filtered_tasks = method_results['inn']['dataset_id']
     # get the common dataset ids between all methods
-    #for method_name in method_names:
-    #    filtered_tasks = set(filtered_tasks).intersection(set(method_results[method_name]['dataset_id']))
+    for method_name in method_names:
+        filtered_tasks = set(filtered_tasks).intersection(set(method_results[method_name]['dataset_id']))
 
     for method_name in method_names:
         method_result = method_results[method_name]
@@ -221,23 +220,27 @@ def calculate_method_time(output_dir: str, method_name: str):
 
     result_dict = {
         'dataset_id': [],
-        'time': [],
+        'train_time': [],
+        'inference_time': [],
 
     }
     method_output_dir = os.path.join(output_dir, method_name)
     for dataset_id in os.listdir(method_output_dir):
         dataset_dir = os.path.join(method_output_dir, dataset_id)
-        seed_times = []
+        seed_train_times = []
+        seed_inference_times = []
         for seed in os.listdir(dataset_dir):
             seed_dir = os.path.join(dataset_dir, seed)
             try:
                 with open(os.path.join(seed_dir, 'output_info.json'), 'r') as f:
                     seed_result = json.load(f)
-                    seed_times.append(seed_result['time'])
+                    seed_train_times.append(seed_result['train_time'])
+                    seed_inference_times.append(seed_result['inference_time'])
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
         result_dict['dataset_id'].append(dataset_id)
-        result_dict['time'].append(np.mean(seed_times) if len(seed_times) > 0 else np.NAN)
+        result_dict['train_time'].append(np.median(seed_train_times) if len(seed_train_times) > 0 else np.NAN)
+        result_dict['inference_time'].append(np.median(seed_inference_times) if len(seed_inference_times) > 0 else np.NAN)
 
     return pd.DataFrame.from_dict(result_dict)
 
@@ -250,26 +253,24 @@ def calculate_method_times(output_dir: str, method_names: list):
         # take times as list
         method_dfs[method_name] = method_df
 
-    dataset_ids = method_dfs['inn']['dataset_id']
-    slow_down = []
-    for dataset_id in dataset_ids:
-        inn_performance = method_dfs['inn'][method_dfs['inn']['dataset_id'] == dataset_id]['time'].values[0]
-        tabresnet = method_dfs['tabresnet'][method_dfs['tabresnet']['dataset_id'] == dataset_id]['time'].values[0]
-        slow_down.append(inn_performance / tabresnet)
-    print(f'Mean slow down: {np.mean(slow_down)}')
-    print(f'Std slow down: {np.std(slow_down)}')
+    for method_name in method_names:
+        # Mean training time
+        print(f'{method_name} median training time: {np.median(method_dfs[method_name]["train_time"])}')
+        # Mean inference time
+        print(f'{method_name} median inference time: {np.median(method_dfs[method_name]["inference_time"])}')
+
 
 result_directory = os.path.expanduser(
     os.path.join(
         '~',
         'Desktop',
-        'inn_results',
+        'hpo',
     )
 )
 
-method_names = ['inn', 'tabresnet', 'tabnet', 'random_forest', 'catboost']
+method_names = ['inn', 'decision_tree', 'logistic_regression']
 #rank_methods(result_directory, method_names)
-prepare_cd_data(result_directory, method_names)
+#prepare_cd_data(result_directory, method_names)
 #analyze_results(result_directory, [])
 #distribution_methods(result_directory, method_names)
-#calculate_method_times(result_directory, method_names)
+calculate_method_times(result_directory, method_names)
