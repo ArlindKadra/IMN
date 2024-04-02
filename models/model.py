@@ -225,6 +225,8 @@ class Classifier():
         else:
             y_test = torch.zeros(X_test.size(0)).long()
 
+        y_test = y_test.to(self.dev)
+
         predictions = []
         weights = []
 
@@ -246,63 +248,39 @@ class Classifier():
                 else:
                     output = self.sigmoid_act_func(output)
 
-            predictions.append([output.detach().to('cpu').numpy()])
+            predictions.append(output.detach())
             if self.interpretable:
-                #weights.append(model_weights.detach().to('cpu').numpy())
-                weights.append(model_weights.detach().to('cpu').numpy())
+                weights.append(model_weights.detach())
 
-        predictions = np.array(predictions)
-        predictions = np.mean(predictions, axis=0)
-        # take only the last prediction
-        #predictions = predictions[-1, :, :]
-        predictions = np.squeeze(predictions)
+
+        predictions = torch.stack(predictions, dim=0)
+        predictions = torch.mean(predictions, axis=0)
+        predictions = torch.squeeze(predictions)
 
         if self.interpretable and return_weights:
-            weights = np.array(weights)
-            weights = np.squeeze(weights)
-            if len(weights.shape) > 2:
-                weights = weights[-1, :, :]
-                #weights = np.mean(weights, axis=0)
-                weights = np.squeeze(weights)
-            # take all values except the last one (bias)
-            #weights = weights[:, :-1]
-            #test_examples = X_test.detach().to('cpu').numpy()
-            #weights = weights * test_examples
-
+            weights = weights[-1]
+            weights = torch.squeeze(weights)
             if self.mode == 'classification':
                 if self.nr_classes == 2:
-                    act_predictions = (predictions > 0.5).astype(int)
+                    # threshold in case of binary classification
+                    act_predictions = (predictions > 0.5).int()
                 else:
-                    act_predictions = np.argmax(predictions, axis=1)
+                    act_predictions = torch.argmax(predictions, dim=1)
 
+                correct_predictions_mask = act_predictions == y_test
 
-                selected_weights = []
-                #correct_test_examples = []
-                for test_example_idx in range(weights.shape[0]):
-                    # select the weights for the predicted class
-                    if y_test[test_example_idx] == act_predictions[test_example_idx]:
-                        if self.nr_classes > 2:
-                            selected_weights.append(weights[test_example_idx, :, act_predictions[test_example_idx]])
-                        else:
-                            selected_weights.append(weights[test_example_idx, :])
-                        #correct_test_examples.append(test_example_idx)
-                weights = np.array(selected_weights)
-                #correct_test_examples = np.array(correct_test_examples)
+                if self.nr_classes > 2:
+                    # For multi-class classification, select weights for the predicted class
+                    # We gather along the last dimension (classes) for each correctly predicted example
+                    class_indices = act_predictions[correct_predictions_mask].unsqueeze(-1).unsqueeze(-1).expand(-1,
+                                                                                                                 weights.shape[
+                                                                                                                     1],
+                                                                                                                 1)
+                    weights = torch.gather(weights[correct_predictions_mask], 2, class_indices).squeeze(2)
+                else:
+                    # For binary classification, select all weights for correctly predicted examples
+                    weights = weights[correct_predictions_mask]
 
-            """
-            #weights_importances = generate_weight_importances_top_k(weights, 5)
-            #
-            # normalize the weights
-            #weights_averages = weights_averages / np.sum(weights_averages)
-            """
-            #test_examples = X_test.detach().to('cpu').numpy()
-            #correct_test_examples = test_examples[correct_test_examples]
-            #weights = weights * correct_test_examples
-            """
-            #weights = np.mean(np.abs(weights), axis=0)
-            #weights = weights / np.sum(weights)
-            """
-        #weights = np.mean(weights, axis=0)
         if self.interpretable:
             if return_weights:
                 return predictions, weights

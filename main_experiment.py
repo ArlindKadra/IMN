@@ -112,6 +112,12 @@ def main(
 
     inference_time = time.time() - start_time - train_time
 
+    test_predictions = test_predictions.cpu().numpy()
+    train_predictions = train_predictions.cpu().numpy()
+
+    if interpretable:
+        weight_importances = weight_importances.cpu().detach().numpy()
+
     # from series to list
     y_test = y_test.tolist()
     y_train = y_train.tolist()
