@@ -48,6 +48,18 @@ def hpo_space_catboost(trial: optuna.trial.Trial) -> Dict:
 
     return params
 
+def hpo_space_random_forest(trial: optuna.trial.Trial) -> Dict:
+
+    params = {
+        'criterion': trial.suggest_categorical('criterion', ['gini', 'entropy']),
+        'max_depth': trial.suggest_int('max_depth', 1, 21),
+        'min_samples_split': trial.suggest_int('min_samples_split', 2, 11),
+        'max_leaf_nodes': trial.suggest_int('max_leaf_nodes', 3, 26),
+        'n_estimators': trial.suggest_int('n_estimators', 100, 4000),
+    }
+
+    return params
+
 def objective(
     trial: optuna.trial.Trial,
     args: argparse.Namespace,
@@ -66,6 +78,8 @@ def objective(
         hp_config = hpo_space_dtree(trial)
     elif args.model_name == 'catboost':
         hp_config = hpo_space_catboost(trial)
+    elif args.model_name == 'random_forest':
+        hp_config = hpo_space_random_forest(trial)
 
     output_info = main(
         args,

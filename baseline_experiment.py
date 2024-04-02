@@ -74,6 +74,11 @@ def main(
         'class_weights': class_weights,
     }
 
+    basic_hp_config_random_forest = {
+        'random_state': seed,
+        'class_weight': 'balanced',
+    }
+
     if hp_config is not None:
         if args.model_name == 'logistic_regression':
             basic_hp_config_logistic.update(hp_config)
@@ -81,9 +86,11 @@ def main(
             basic_hp_config_dtree.update(hp_config)
         elif args.model_name == 'catboost':
             basic_hp_config_catboost.update(hp_config)
+        elif args.model_name == 'random_forest':
+            basic_hp_config_random_forest.update(hp_config)
 
     if args.model_name == 'random_forest':
-        model = RandomForestClassifier(n_estimators=100, random_state=seed, class_weight='balanced')
+        model = RandomForestClassifier(**basic_hp_config_random_forest)
     elif args.model_name == 'catboost':
         model = CatBoostClassifier(
             **basic_hp_config_catboost,
