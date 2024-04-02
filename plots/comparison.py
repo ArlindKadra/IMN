@@ -238,7 +238,10 @@ def calculate_method_time(output_dir: str, method_name: str):
                     seed_train_times.append(seed_result['train_time'])
                     seed_inference_times.append(seed_result['inference_time'])
             except FileNotFoundError:
+
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
+        if len(seed_train_times) == 0:
+            continue
         result_dict['dataset_id'].append(dataset_id)
         result_dict['train_time'].append(np.median(seed_train_times) if len(seed_train_times) > 0 else np.NAN)
         result_dict['inference_time'].append(np.median(seed_inference_times) if len(seed_inference_times) > 0 else np.NAN)
@@ -356,5 +359,4 @@ method_names = ['decision_tree', 'logistic_regression', 'random_forest', 'catboo
 #analyze_results(result_directory, [])
 #distribution_methods(result_directory, method_names)
 #calculate_method_times(result_directory, method_names)
-
 prepare_result_table(result_directory, method_names, mode='train')
