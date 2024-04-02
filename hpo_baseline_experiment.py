@@ -34,6 +34,20 @@ def hpo_space_dtree(trial: optuna.trial.Trial) -> Dict:
 
     return params
 
+def hpo_space_catboost(trial: optuna.trial.Trial) -> Dict:
+
+    params = {
+        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1, log=True),
+        'random_strength': trial.suggest_int('random_strength', 1, 20),
+        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1, 10, log=True),
+        'bagging_temperature': trial.suggest_float('bagging_temperature', 1e-6, 1, log=True),
+        'leaf_estimation_iterations': trial.suggest_int('leaf_estimation_iterations', 1, 20),
+        'iterations': trial.suggest_int('iterations', 100, 4000)
+
+    }
+
+    return params
+
 def objective(
     trial: optuna.trial.Trial,
     args: argparse.Namespace,
@@ -50,6 +64,8 @@ def objective(
         hp_config = hpo_space_logistic(trial)
     elif args.model_name == 'decision_tree':
         hp_config = hpo_space_dtree(trial)
+    elif args.model_name == 'catboost':
+        hp_config = hpo_space_catboost(trial)
 
     output_info = main(
         args,
