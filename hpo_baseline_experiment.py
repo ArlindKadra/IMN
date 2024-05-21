@@ -60,6 +60,24 @@ def hpo_space_random_forest(trial: optuna.trial.Trial) -> Dict:
 
     return params
 
+def hpo_space_tabnet(trial: optuna.trial.Trial) -> Dict:
+
+    params = {
+        'n_a': trial.suggest_categorical('n_a', [8, 16, 24, 32, 64, 128]),
+        'learning_rate': trial.suggest_categorical('learning_rate', [0.005, 0.01, 0.02, 0.025]),
+        'gamma': trial.suggest_categorical('gamma', [1.0, 1.2, 1.5, 2.0]),
+        'n_steps': trial.suggest_categorical('n_steps', [3, 4, 5, 6, 7, 8, 9, 10]),
+        'lambda_sparse': trial.suggest_categorical('lambda_sparse', [0, 0.000001, 0.0001, 0.001, 0.01, 0.1]),
+        'batch_size': trial.suggest_categorical('batch_size', [256, 512, 1024, 2048, 4096, 8192, 16384, 32768]),
+        'virtual_batch_size': trial.suggest_categorical('virtual_batch_size', [256, 512, 1024, 2048, 4096]),
+        'decay_rate': trial.suggest_categorical('decay_rate', [0.4, 0.8, 0.9, 0.95]),
+        'decay_iterations': trial.suggest_categorical('decay_iterations', [500, 2000, 8000, 10000, 20000]),
+        'momentum': trial.suggest_categorical('momentum', [0.6, 0.7, 0.8, 0.9, 0.95, 0.98]),
+        'epochs': trial.suggest_int('epochs', 10, 500),
+    }
+
+    return params
+
 def objective(
     trial: optuna.trial.Trial,
     args: argparse.Namespace,
@@ -80,6 +98,8 @@ def objective(
         hp_config = hpo_space_catboost(trial)
     elif args.model_name == 'random_forest':
         hp_config = hpo_space_random_forest(trial)
+    elif args.model_name == 'tabnet':
+        hp_config = hpo_space_tabnet(trial)
 
     output_info = main(
         args,
@@ -104,7 +124,7 @@ def hpo_main(args):
 
     encode_categorical_variables = {
         'random_forest': True,
-        'catboost': False,
+        'catboost': True,
         'decision_tree': True,
         'logistic_regression': True,
         'tabnet': False,
@@ -149,10 +169,14 @@ def hpo_main(args):
             study.optimize(
                 lambda trial: objective(trial, args, X_train, y_train, X_valid, y_valid, categorical_indicator, attribute_names, dataset_name), n_trials=args.n_trials, timeout=time_limit
             )
-        except optuna.exceptions.OptunaError as e:
+        except Exception as e:
             print(f"Optimization stopped: {e}")
 
-        best_params = study.best_params
+        try:
+            best_params = study.best_params
+        except ValueError:
+            best_params = None
+
         trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
         trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
 
@@ -190,7 +214,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset_id',
         type=int,
-        default=31,
+        default=1590,
         help='Dataset id'
     )
     parser.add_argument(
