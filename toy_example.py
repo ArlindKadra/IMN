@@ -7,7 +7,7 @@ import numpy as np
 
 import matplotlib
 matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+#matplotlib.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 import seaborn as sns
 sns.set_style('white')
 
@@ -136,7 +136,7 @@ hypernet = HyperNet(
 criterion = torch.nn.BCEWithLogitsLoss()
 second_criterion = torch.nn.MSELoss()
 optimizer = torch.optim.AdamW(hypernet.parameters(), lr=0.001)
-nr_epochs = 100
+nr_epochs = 350
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nr_epochs)
 hypernet.train()
 specify_weight_norm = True
@@ -227,7 +227,7 @@ for point_first_feature in np.linspace(min_first_feature, max_first_feature, 100
 
 ax[0, 0].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
 ax[0, 0].scatter(negative_examples_first_feature, negative_examples_second_feature, color='blue', marker="o", s=12)
-ax[0, 0].plot(hyperplane_x_points, hyperplane_y_points, label=r'$\{x\, | \, \hat{w}\left(x\right)^T\,x + \hat{w}_0\left(x\right) = 0\}$', color='green', linewidth=3.5)
+ax[0, 0].plot(hyperplane_x_points, hyperplane_y_points, label=r'$\{x\, | \, w\left(x\right)^T\,x + w_0\left(x\right) = 0\}$', color='green', linewidth=3.5)
 ax[0, 0].set_xlabel('$x_1$')
 ax[0, 0].set_ylabel('$x_2$')
 ax[0, 0].set_title('Globally Accurate')
@@ -238,7 +238,7 @@ y = [math.sin(point) for point in first_feature]
 
 chosen_indices = np.random.choice(range(X_train.shape[0]), 2, replace=False)
 chosen_examples = X_train[chosen_indices]
-_, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True)
+_, weights = hypernet(torch.tensor(chosen_examples).float().to('cpu'), return_weights=True, simple_weights=True)
 weights = weights.detach().to('cpu').numpy()
 #plt.figure()
 ax[0, 1].scatter(positive_examples_first_feature, positive_examples_second_feature, color='red', marker="^", s=12)
@@ -262,7 +262,7 @@ for index, example in enumerate(chosen_examples):
         if second_part_line[i] > -1.0 and second_part_line[i] < 1.6:
             refined_first_part_line.append(first_part_line[i])
             refined_second_part_line.append(second_part_line[i])
-    ax[0, 1].plot(refined_first_part_line, refined_second_part_line, color=colors[index], label=r"$\{x \, | \, \hat{w}(x\mathrm{'})^T\,x + \hat{w}_0(x\mathrm{'}) = 0\}$", markersize=12, linewidth=3.5)
+    ax[0, 1].plot(refined_first_part_line, refined_second_part_line, color=colors[index], label=r"$\{x \, | \, w(x\mathrm{'})^T\,x + w_0(x\mathrm{'}) = 0\}$", markersize=12, linewidth=3.5)
     ax[0, 1].scatter(first_feature, second_feature, color=colors[index], marker=markers[index], label=labels[index],
                      s=35)
     ax[0, 1].text(first_feature - 0.15, second_feature + 0.2, r"$x\mathrm{'}$", fontsize=27)

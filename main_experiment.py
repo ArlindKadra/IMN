@@ -7,7 +7,7 @@ from typing import Dict
 import torch
 import numpy as np
 import wandb
-
+import shap
 from models.model import Classifier
 from utils import get_dataset
 from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
@@ -36,7 +36,7 @@ def main(
 
     if hp_config is None:
         hp_config = {
-            'nr_epochs': 500,
+            'nr_epochs': 100,
             'batch_size': 64,
             'learning_rate': 0.01,
             'weight_decay': 0.01,
@@ -169,14 +169,19 @@ def main(
             'inference_time': inference_time,
         }
 
-    """
+    start_time = time.time()
+
     def f(X):
-        return model.predict([X[:, i] for i in range(X.shape[1])]).flatten()
+        return model.predict(X).flatten()
 
     med = np.median(X_test, axis=0).reshape((1, X_test.shape[1]))
     explainer = shap.Explainer(f, med)
     shap_weights = []
     # reshape example
+
+    import tensorflow as tf
+    tf.compat.v1.disable_v2_behavior()
+
     for i in range(X_test.shape[0]):
         example = X_test[i, :]
         example = example.reshape((1, X_test.shape[1]))
@@ -186,6 +191,9 @@ def main(
     shap_weights = np.squeeze(shap_weights, axis=1)
     shap_weights = np.mean(np.abs(shap_weights), axis=0)
     shap_weights = shap_weights / np.sum(shap_weights)
+    print(shap_weights)
+    end_time = time.time()
+    print(f"SHAP time: {end_time - start_time}")
     """
     if interpretable:
         # print attribute name and weight for the top 10 features
@@ -207,3 +215,140 @@ def main(
         wandb.finish()
 
     return output_info
+    """
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument(
+        "--nr_blocks",
+        type=int,
+        default=2,
+        help="Number of levels in the hypernetwork",
+    )
+    parser.add_argument(
+        "--hidden_size",
+        type=int,
+        default=128,
+        help="Number of hidden units in the hypernetwork",
+    )
+    parser.add_argument(
+        "--augmentation_probability",
+        type=float,
+        default=0,
+        help="Probability of data augmentation",
+    )
+    parser.add_argument(
+        "--scheduler_t_mult",
+        type=int,
+        default=2,
+        help="Multiplier for the scheduler",
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=0,
+        help='Random seed',
+    )
+    parser.add_argument(
+        '--dataset_id',
+        type=int,
+        default=41142,
+        help='Dataset id',
+    )
+    parser.add_argument(
+        '--test_split_size',
+        type=float,
+        default=0.2,
+        help='Test size',
+    )
+    parser.add_argument(
+        '--nr_restarts',
+        type=int,
+        default=3,
+        help='Number of learning rate restarts',
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        default='.',
+        help='Directory to save the results',
+    )
+    parser.add_argument(
+        '--interpretable',
+        action='store_true',
+        default=False,
+        help='Whether to use interpretable models',
+    )
+    parser.add_argument(
+        '--encoding_type',
+        type=str,
+        default='ordinal',
+        help='Encoding type',
+    )
+    parser.add_argument(
+        '--mode',
+        type=str,
+        default='classification',
+        help='If we are doing classification or regression.',
+    )
+    parser.add_argument(
+        '--hpo_tuning',
+        action='store_true',
+        help='Whether to perform hyperparameter tuning',
+    )
+    parser.add_argument(
+        '--n_trials',
+        type=int,
+        default=100,
+        help='Number of trials for hyperparameter tuning',
+    )
+    parser.add_argument(
+        '--disable_wandb',
+        action='store_true',
+        help='Whether to disable wandb logging',
+    )
+
+    args = parser.parse_args()
+    dataset_id = args.dataset_id
+    test_split_size = args.test_split_size
+    seed = args.seed
+
+    info = get_dataset(
+        dataset_id,
+        test_split_size=test_split_size,
+        seed=seed,
+        encode_categorical=True,
+        hpo_tuning=args.hpo_tuning,
+
+    )
+
+    dataset_name = info['dataset_name']
+    attribute_names = info['attribute_names']
+
+    X_train = info['X_train']
+    X_test = info['X_test']
+
+    y_train = info['y_train']
+    y_test = info['y_test']
+
+
+    categorical_indicator = info['categorical_indicator']
+    model_name = 'inn' if args.interpretable else 'tabresnet'
+    output_directory = os.path.join(args.output_dir, model_name, f'{args.dataset_id}', f'{seed}')
+    os.makedirs(output_directory, exist_ok=True)
+    import pandas as pd
+    # concatenate train and validation as pandas
+
+    output_info = main(
+        args,
+        None,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        categorical_indicator,
+        attribute_names,
+        dataset_name,
+    )

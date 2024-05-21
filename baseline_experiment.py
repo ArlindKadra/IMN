@@ -2,6 +2,7 @@ import argparse
 import time
 from typing import Dict
 
+import shap
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -13,6 +14,8 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 import numpy as np
 import wandb
+
+import torch
 
 
 def main(
@@ -31,10 +34,12 @@ def main(
 
     seed = args.seed
 
+    X_train = np.array(X_train)
+    X_test = np.array(X_test)
 
-    categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
+    #categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
     # count number of unique categories per pandas column
-    categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
+    #categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
 
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
@@ -50,11 +55,13 @@ def main(
     start_time = time.time()
     # count number of categorical variables
     nr_categorical = np.sum(categorical_indicator)
+
     tabnet_params = {
         "cat_idxs": [i for i in range(nr_categorical)] if nr_categorical > 0 else [],
-        "cat_dims": categorical_counts if nr_categorical > 0 else [],
+       # "cat_dims": categorical_counts if nr_categorical > 0 else [],
         "seed": seed,
-        "device_name": "cuda",
+        "device_name": "cpu",
+        'optimizer_fn': torch.optim.AdamW,
     }
 
     basic_hp_config_logistic = {
@@ -79,6 +86,7 @@ def main(
         'class_weight': 'balanced',
     }
 
+
     if hp_config is not None:
         if args.model_name == 'logistic_regression':
             basic_hp_config_logistic.update(hp_config)
@@ -88,6 +96,8 @@ def main(
             basic_hp_config_catboost.update(hp_config)
         elif args.model_name == 'random_forest':
             basic_hp_config_random_forest.update(hp_config)
+        elif args.model_name == 'tabnet':
+            tabnet_params.update(hp_config)
 
     if args.model_name == 'random_forest':
         model = RandomForestClassifier(**basic_hp_config_random_forest)
@@ -115,27 +125,84 @@ def main(
                 remainder='passthrough',
             )
 
-            X_train = column_transformer.fit_transform(X_train)
+            column_transformer.fit(np.concatenate((X_train, X_test), axis=0))
+            X_train = column_transformer.transform(X_train)
             X_test = column_transformer.transform(X_test)
         else:
             X_train = X_train.to_numpy()
             X_test = X_test.to_numpy()
 
+        tabnet_not_default = False
+        if 'learning_rate' in tabnet_params:
+            tabnet_not_default = True
+            optimizer_params = {'lr': tabnet_params['learning_rate']}
+            scheduler_params = dict(decay_rate=tabnet_params['decay_rate'], decay_iterations=tabnet_params['decay_iterations'])
+            tabnet_params['optimizer_params'] = optimizer_params
+            tabnet_params['scheduler_params'] = scheduler_params
+
+            del tabnet_params['learning_rate']
+            del tabnet_params['decay_rate']
+            del tabnet_params['decay_iterations']
+
+            batch_size = tabnet_params['batch_size']
+            virtual_batch_size = tabnet_params['virtual_batch_size']
+            epochs = tabnet_params['epochs']
+            del tabnet_params['batch_size']
+            del tabnet_params['virtual_batch_size']
+            del tabnet_params['epochs']
+
         model = TabNetClassifier(**tabnet_params)
 
+
     if args.model_name == 'catboost':
-        model.fit(X_train, y_train, cat_features=categorical_indices)
+        model.fit(X_train, y_train) #cat_features=categorical_indices)
     elif args.model_name == 'tabnet':
-        model.fit(X_train, y_train, weights=1)
+        if tabnet_not_default:
+            model.fit(X_train, y_train, weights=1, batch_size=batch_size, virtual_batch_size=virtual_batch_size, max_epochs=epochs, eval_metric=['auc'],)
+        else:
+            model.fit(X_train, y_train, weights=1, eval_metric=['auc'])
     else:
         model.fit(X_train, y_train)
 
     train_time = time.time() - start_time
 
+    predict_start = time.time()
+
     train_predictions_labels = model.predict(X_train)
+    predict_time = time.time() - predict_start
+    print("Predict time: %s" % predict_time)
     train_predictions_probabilities = model.predict_proba(X_train)[:, 1] if nr_classes == 2 else model.predict_proba(X_train)
     test_predictions_labels = model.predict(X_test)
     test_predictions_probabilities = model.predict_proba(X_test)[:, 1] if nr_classes == 2 else model.predict_proba(X_test)
+
+    start_time = time.time()
+
+    def f(X):
+        return model.predict(X)
+
+    med = np.median(X_test, axis=0).reshape((1, X_test.shape[1]))
+    print(med.shape)
+
+    explainer = shap.Explainer(f, med)
+    shap_weights = []
+    # reshape example
+
+    import tensorflow as tf
+    tf.compat.v1.disable_v2_behavior()
+
+    for i in range(X_test.shape[0]):
+        example = X_test[i, :]
+
+        example = example.reshape((1, X_test.shape[1]))
+        shap_values = explainer.shap_values(example)
+        shap_weights.append(shap_values)
+    shap_weights = np.array(shap_weights)
+    shap_weights = np.squeeze(shap_weights, axis=1)
+    shap_weights = np.mean(np.abs(shap_weights), axis=0)
+    shap_weights = shap_weights / np.sum(shap_weights)
+    print(shap_weights)
+    end_time = time.time()
+    print(f"SHAP time: {end_time - start_time}")
 
     # calculate the balanced accuracy
     train_auroc = roc_auc_score(y_train, train_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_train, train_predictions_probabilities, multi_class='ovo')
