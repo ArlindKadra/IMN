@@ -100,6 +100,8 @@ def objective(
         hp_config = hpo_space_random_forest(trial)
     elif args.model_name == 'tabnet':
         hp_config = hpo_space_tabnet(trial)
+    elif args.model_name == 'danet':
+        hp_config = None
 
     output_info = main(
         args,
@@ -128,6 +130,7 @@ def hpo_main(args):
         'decision_tree': True,
         'logistic_regression': True,
         'tabnet': False,
+        'danet': True,
     }
 
     info = get_dataset(

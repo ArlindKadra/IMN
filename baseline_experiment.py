@@ -2,8 +2,10 @@ import argparse
 import time
 from typing import Dict
 
-import shap
+#import shap
 from catboost import CatBoostClassifier
+from DAN_Task import DANetClassifier, DANetRegressor
+from qhoptim.pyt import QHAdam
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
@@ -34,12 +36,13 @@ def main(
 
     seed = args.seed
 
+
+    categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
+    # count number of unique categories per pandas column
+    categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
+
     X_train = np.array(X_train)
     X_test = np.array(X_test)
-
-    #categorical_indices = [i for i, cat_indicator in enumerate(categorical_indicator) if cat_indicator]
-    # count number of unique categories per pandas column
-    #categorical_counts = [len(np.unique(X_train.iloc[:, i])) for i in categorical_indices]
 
     unique_classes, class_counts = np.unique(y_train, axis=0, return_counts=True)
     class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_train), y=y_train)
@@ -58,7 +61,7 @@ def main(
 
     tabnet_params = {
         "cat_idxs": [i for i in range(nr_categorical)] if nr_categorical > 0 else [],
-       # "cat_dims": categorical_counts if nr_categorical > 0 else [],
+        "cat_dims": categorical_counts if nr_categorical > 0 else [],
         "seed": seed,
         "device_name": "cpu",
         'optimizer_fn': torch.optim.AdamW,
@@ -128,15 +131,13 @@ def main(
             column_transformer.fit(np.concatenate((X_train, X_test), axis=0))
             X_train = column_transformer.transform(X_train)
             X_test = column_transformer.transform(X_test)
-        else:
-            X_train = X_train.to_numpy()
-            X_test = X_test.to_numpy()
 
         tabnet_not_default = False
         if 'learning_rate' in tabnet_params:
             tabnet_not_default = True
             optimizer_params = {'lr': tabnet_params['learning_rate']}
-            scheduler_params = dict(decay_rate=tabnet_params['decay_rate'], decay_iterations=tabnet_params['decay_iterations'])
+            scheduler_params = dict(decay_rate=tabnet_params['decay_rate'],
+                                        decay_iterations=tabnet_params['decay_iterations'])
             tabnet_params['optimizer_params'] = optimizer_params
             tabnet_params['scheduler_params'] = scheduler_params
 
@@ -152,15 +153,39 @@ def main(
             del tabnet_params['epochs']
 
         model = TabNetClassifier(**tabnet_params)
+    elif args.model_name == 'danet':
+        model = DANetClassifier(
+            optimizer_fn=QHAdam,
+            optimizer_params=dict(lr=0.008, weight_decay=1e-5, nus=(0.8, 1.0)),
+            scheduler_params=dict(gamma=0.95, step_size=20),
+            scheduler_fn=torch.optim.lr_scheduler.StepLR,
+            layer=20,
+            base_outdim=64,
+            k=5,
+            drop_rate=0.1,
+            seed=seed,
+        )
+    else:
+        X_train = X_train.to_numpy()
+        X_test = X_test.to_numpy()
 
 
     if args.model_name == 'catboost':
-        model.fit(X_train, y_train) #cat_features=categorical_indices)
+        model.fit(X_train, y_train, cat_features=categorical_indices)
     elif args.model_name == 'tabnet':
         if tabnet_not_default:
             model.fit(X_train, y_train, weights=1, batch_size=batch_size, virtual_batch_size=virtual_batch_size, max_epochs=epochs, eval_metric=['auc'],)
         else:
             model.fit(X_train, y_train, weights=1, eval_metric=['auc'])
+    elif args.model_name == 'danet':
+            model.fit(
+                X_train=X_train,
+                y_train=y_train,
+                max_epochs=500,
+                patience=50,
+                batch_size=8192,
+                virtual_batch_size=256,
+            )
     else:
         model.fit(X_train, y_train)
 
@@ -175,8 +200,8 @@ def main(
     test_predictions_labels = model.predict(X_test)
     test_predictions_probabilities = model.predict_proba(X_test)[:, 1] if nr_classes == 2 else model.predict_proba(X_test)
 
+    """
     start_time = time.time()
-
     def f(X):
         return model.predict(X)
 
@@ -203,7 +228,7 @@ def main(
     print(shap_weights)
     end_time = time.time()
     print(f"SHAP time: {end_time - start_time}")
-
+    """
     # calculate the balanced accuracy
     train_auroc = roc_auc_score(y_train, train_predictions_probabilities) if nr_classes == 2 else roc_auc_score(y_train, train_predictions_probabilities, multi_class='ovo')
     train_accuracy = accuracy_score(y_train, train_predictions_labels)
@@ -211,31 +236,31 @@ def main(
     test_accuracy = accuracy_score(y_test, test_predictions_labels)
 
     inference_time = time.time() - train_time - start_time
+    if args.model_name != 'danet':
+        if args.model_name == 'logistic_regression':
+            # get the feature importances
+            feature_importances = model.coef_
+            if nr_classes > 2:
+                feature_importances = np.mean(np.abs(feature_importances), axis=0)
+            feature_importances = np.squeeze(feature_importances)
+            feature_importances = feature_importances / np.sum(feature_importances)
 
-    if args.model_name == 'logistic_regression':
-        # get the feature importances
-        feature_importances = model.coef_
-        if nr_classes > 2:
-            feature_importances = np.mean(np.abs(feature_importances), axis=0)
-        feature_importances = np.squeeze(feature_importances)
-        feature_importances = feature_importances / np.sum(feature_importances)
+        else:
+            # get the feature importances
+            feature_importances = model.feature_importances_
+        # sort the feature importances in descending order
+        sorted_idx = np.argsort(feature_importances)[::-1]
 
-    else:
-        # get the feature importances
-        feature_importances = model.feature_importances_
-    # sort the feature importances in descending order
-    sorted_idx = np.argsort(feature_importances)[::-1]
+        if type(feature_importances) == np.ndarray:
+            feature_importances = feature_importances.tolist()
+        if type(sorted_idx) == np.ndarray:
+            sorted_idx = sorted_idx.tolist()
 
-    if type(feature_importances) == np.ndarray:
-        feature_importances = feature_importances.tolist()
-    if type(sorted_idx) == np.ndarray:
-        sorted_idx = sorted_idx.tolist()
-
-    # get the names of the top 10 features
-    top_10_features = [attribute_names[i] for i in sorted_idx]
-    top_10_importances = [feature_importances[i] for i in sorted_idx]
-    print("Top 10 features: %s" % top_10_features)
-    print("Top 10 feature importances: %s" % top_10_importances)
+        # get the names of the top 10 features
+        top_10_features = [attribute_names[i] for i in sorted_idx]
+        top_10_importances = [feature_importances[i] for i in sorted_idx]
+        print("Top 10 features: %s" % top_10_features)
+        print("Top 10 feature importances: %s" % top_10_importances)
 
     if not args.disable_wandb:
         wandb.run.summary["Train:auroc"] = train_auroc
@@ -253,10 +278,12 @@ def main(
         'train_accuracy': train_accuracy,
         'test_accuracy': test_accuracy,
         'test_auroc': test_auroc,
-        'top_10_features': top_10_features,
-        'top_10_features_weights': top_10_importances,
         'train_time': train_time,
         'inference_time': inference_time,
     }
+
+    if args.model_name != 'danet':
+        output_info['top_10_features'] = top_10_features
+        output_info['top_10_importances'] = top_10_importances
 
     return output_info

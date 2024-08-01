@@ -1,0 +1,1 @@
+{"train_auroc": 0.9992931547619048, "train_accuracy": 0.96, "test_accuracy": 0.695, "test_auroc": 0.7691666666666667, "train_time": 156.98045420646667, "inference_time": 0.17795324325561523}
