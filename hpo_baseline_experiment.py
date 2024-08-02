@@ -102,6 +102,8 @@ def objective(
         hp_config = hpo_space_tabnet(trial)
     elif args.model_name == 'danet':
         hp_config = None
+    elif args.model_name == 'hypertab':
+        hp_config = None
 
     output_info = main(
         args,
@@ -131,6 +133,7 @@ def hpo_main(args):
         'logistic_regression': True,
         'tabnet': False,
         'danet': True,
+        'hypertab': True,
     }
 
     info = get_dataset(

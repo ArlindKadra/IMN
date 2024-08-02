@@ -44,11 +44,25 @@ def prepare_method_results(output_dir:str, method_name: str):
                 with open(os.path.join(seed_dir, 'output_info.json'), 'r') as f:
                     seed_result = json.load(f)
                     seed_test_balanced_accuracy.append(seed_result['test_auroc'])
-                    seed_train_balanced_accuracy.append(seed_result['train_auroc'] if method_name == 'inn' else seed_result['train_auroc'])
+                    if method_name == 'inn':
+                        seed_train_accuracy_method = seed_result['train_auroc']
+                    elif method_name == 'tabresnet':
+                        try:
+                            seed_train_accuracy_method = seed_result['train_auroc'][-1]
+                        except:
+                            seed_train_accuracy_method = seed_result['train_auroc']
+                    else:
+                        seed_train_accuracy_method = seed_result['train_auroc']
+                    seed_train_balanced_accuracy.append(seed_train_accuracy_method)
             except FileNotFoundError:
                 print(f'No output_info.json found for {method_name} {dataset_id} {seed}')
+            except KeyError:
+                continue
         result_dict['dataset_id'].append(dataset_id)
-        result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
+        try:
+            result_dict['train_auroc'].append(np.mean(seed_train_balanced_accuracy) if len(seed_train_balanced_accuracy) > 0 else np.NAN)
+        except:
+            b = 6
         result_dict['test_auroc'].append(np.mean(seed_test_balanced_accuracy) if len(seed_test_balanced_accuracy) > 0 else np.NAN)
 
     return pd.DataFrame.from_dict(result_dict)
@@ -360,6 +374,7 @@ def autorank_methods(output_dir: str, method_names: list):
         'inn_dtree': 'INDTree',
         'nam': 'NAM',
         'inn_exp': 'INN',
+        'danet': 'DANet',
     }
     method_results = {}
     for method_name in method_names:
@@ -395,7 +410,7 @@ def autorank_methods(output_dir: str, method_names: list):
     plot_stats(result)
     print(result)
     plt.title('Average Rank')
-    plt.savefig(os.path.join(output_dir, 'tuned_binary_black_box_cd.pdf'), bbox_inches="tight")
+    plt.savefig(os.path.join(output_dir, 'black_box_cd.pdf'), bbox_inches="tight")
 
 import openml
 
@@ -504,5 +519,15 @@ def prepare_result_table(output_dir: str, method_names: list, mode='test'):
     print(df_dataset_info.to_latex(index=False, float_format="%.3f"))
 
 #autorank_methods(result_directory, method_names)
-prepare_result_table(result_directory, method_names, 'train')
-
+#prepare_result_table(result_directory, method_names, 'train')
+result_directory = os.path.expanduser(
+    os.path.join(
+        '~',
+        'Desktop',
+        'imn_default',
+        'defaults'
+    )
+)
+method_names = ['inn', 'tabresnet', 'catboost', 'random_forest', 'tabnet', 'danet']
+#method_names = ['inn', 'catboost', 'random_forest', 'tabresnet', 'tabnet']
+autorank_methods(result_directory, method_names)

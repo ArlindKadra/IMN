@@ -5,6 +5,7 @@ from typing import Dict
 #import shap
 from catboost import CatBoostClassifier
 from DAN_Task import DANetClassifier, DANetRegressor
+from hypertab import HyperTabClassifier
 from qhoptim.pyt import QHAdam
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -16,6 +17,7 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 import numpy as np
 import wandb
+
 
 import torch
 
@@ -165,6 +167,8 @@ def main(
             drop_rate=0.1,
             seed=seed,
         )
+    elif args.model_name == 'hypertab':
+        model = HyperTabClassifier(device='cuda', epochs=50)
     else:
         X_train = X_train.to_numpy()
         X_test = X_test.to_numpy()
@@ -236,7 +240,7 @@ def main(
     test_accuracy = accuracy_score(y_test, test_predictions_labels)
 
     inference_time = time.time() - train_time - start_time
-    if args.model_name != 'danet':
+    if args.model_name != 'danet' and args.model_name != 'hypertab':
         if args.model_name == 'logistic_regression':
             # get the feature importances
             feature_importances = model.coef_
@@ -267,10 +271,12 @@ def main(
         wandb.run.summary["Train:accuracy"] = train_accuracy
         wandb.run.summary["Test:auroc"] = test_auroc
         wandb.run.summary["Test:accuracy"] = test_accuracy
-        wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = top_10_importances
         wandb.run.summary["Train:time"] = train_time
         wandb.run.summary["Inference:time"] = inference_time
+        if args.model_name != 'danet' and args.model_name != 'hypertab':
+            wandb.run.summary["Top_10_features"] = top_10_features
+            wandb.run.summary["Top_10_features_weights"] = top_10_importances
+
         wandb.finish()
 
     output_info = {
@@ -282,7 +288,7 @@ def main(
         'inference_time': inference_time,
     }
 
-    if args.model_name != 'danet':
+    if args.model_name != 'danet' and args.model_name != 'hypertab':
         output_info['top_10_features'] = top_10_features
         output_info['top_10_importances'] = top_10_importances
 
