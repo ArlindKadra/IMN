@@ -3,38 +3,14 @@ import json
 import os
 from typing import Dict
 
-import optuna
 import numpy as np
+import optuna
 import pandas as pd
 
 from main_experiment import main
+from search_spaces import hpo_space_imn, hpo_space_tabresnet
 from utils import get_dataset
 
-
-def hpo_space_imn(trial: optuna.trial.Trial) -> Dict:
-
-    params = {
-        'nr_epochs': trial.suggest_int('nr_epochs', 10, 500),
-        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True),
-        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256, 512]),
-        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
-        'weight_norm': trial.suggest_float('weight_norm', 1e-5, 1e-1, log=True),
-        'dropout_rate': trial.suggest_float('dropout_rate', 0, 0.5),
-    }
-
-    return params
-
-def hpo_space_tabresnet(trial: optuna.trial.Trial) -> Dict:
-
-    params = {
-        'nr_epochs': trial.suggest_int('nr_epochs', 10, 500),
-        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True),
-        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256, 512]),
-        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
-        'dropout_rate': trial.suggest_float('dropout_rate', 0, 0.5),
-    }
-
-    return params
 
 def objective(
     trial: optuna.trial.Trial,
@@ -47,6 +23,23 @@ def objective(
     attribute_names: np.ndarray,
     dataset_name: str,
 ) -> float:
+    """The objective function for hyperparameter optimization.
+
+    Args:
+        trial: The optuna trial object.
+        args: The arguments for the experiment.
+        X_train: The training examples.
+        y_train: The training labels.
+        X_valid: The validation examples.
+        y_valid: The validation labels.
+        categorical_indicator: The categorical indicator for the features.
+        attribute_names: The feature names.
+        dataset_name: The name of the dataset.
+
+    Returns:
+        The test AUROC.
+
+    """
 
     if args.interpretable:
         hp_config = hpo_space_imn(trial)
@@ -69,16 +62,12 @@ def objective(
 
 
 def hpo_main(args):
-
-    dataset_id = args.dataset_id
-    test_split_size = args.test_split_size
-    seed = args.seed
-
+    """The main function for hyperparameter optimization."""
 
     info = get_dataset(
-        dataset_id,
-        test_split_size=test_split_size,
-        seed=seed,
+        args.dataset_id,
+        test_split_size=args.test_split_size,
+        seed=args.seed,
         encode_categorical=True,
         hpo_tuning=args.hpo_tuning,
 
@@ -99,9 +88,16 @@ def hpo_main(args):
 
     categorical_indicator = info['categorical_indicator']
     model_name = 'inn' if args.interpretable else 'tabresnet'
-    output_directory = os.path.join(args.output_dir, model_name, f'{args.dataset_id}', f'{seed}')
+    output_directory = os.path.join(
+        args.output_dir,
+        model_name,
+        f'{args.dataset_id}',
+        f'{args.seed}',
+    )
+
     os.makedirs(output_directory, exist_ok=True)
 
+    best_params = None
     if args.hpo_tuning:
 
         time_limit = 60 * 60
@@ -110,6 +106,7 @@ def hpo_main(args):
             sampler=optuna.samplers.TPESampler(seed=seed),
         )
 
+        # queue default configurations as the first trials
         if args.interpretable:
             study.enqueue_trial(
                 {
@@ -134,19 +131,30 @@ def hpo_main(args):
 
         try:
             study.optimize(
-                lambda trial: objective(trial, args, X_train, y_train, X_valid, y_valid, categorical_indicator, attribute_names, dataset_name), n_trials=args.n_trials, timeout=time_limit
+                lambda trial: objective(
+                    trial,
+                    args,
+                    X_train,
+                    y_train,
+                    X_valid,
+                    y_valid,
+                    categorical_indicator,
+                    attribute_names,
+                    dataset_name,
+                ),
+                n_trials=args.n_trials,
+                timeout=time_limit,
             )
         except optuna.exceptions.OptunaError as e:
-            print(f"Optimization stopped: {e}")
+            print(f'Optimization stopped: {e}')
 
         best_params = study.best_params
         trial_df = study.trials_dataframe(attrs=('number', 'value', 'params', 'state'))
         trial_df.to_csv(os.path.join(output_directory, 'trials.csv'), index=False)
 
-    # concatenate train and validation as pandas
+    # concatenate train and validation
     X_train = pd.concat([X_train, X_valid], axis=0)
     y_train = np.concatenate([y_train, y_valid], axis=0)
-
 
     output_info = main(
         args,
