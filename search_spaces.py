@@ -1,3 +1,8 @@
+from typing import Dict
+
+import optuna
+
+
 def hpo_space_imn(trial: optuna.trial.Trial) -> Dict:
 
     params = {
