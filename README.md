@@ -15,19 +15,14 @@ cat requirements.txt | xargs -n 1 -L 1 pip install
 
 ## Running the code
 
-The entry script to run IMN and TabResNet is `main_experiment.py`. 
-The entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `baseline_experiment.py`.
+The entry script to run IMN and TabResNet is `hpo_main_experiment.py`. 
+The entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `hpo_baseline_experiment.py`.
 
-The main arguments for `main_experiment.py` are:
+The main arguments for `hpo_main_experiment.py` are:
 
 - `--nr_blocks`: Number of residual blocks in the hypernetwork.
 - `--hidden_size`: The number of hidden units per-layer.
-- `--nr_epochs`: The number of epochs to train the hypernetwork.
-- `--batch_size`: The number of examples in a batch.
-- `--learning_rate`: The learning rate used during optimization.
 - `--augmentation_probability`: The probability with which data augmentation will be applied.
-- `--weight_decay`: The weight decay value.
-- `--weight_norm`: The L1 coefficient that controls the sparsity induced in the final importances per-feature.
 - `--scheduler_t_mult`: Number of restarts for the learning rate scheduler.
 - `--seed`: The random seed to generate reproducible results.
 - `--dataset_id`: The OpenML dataset id.
@@ -36,13 +31,16 @@ The main arguments for `main_experiment.py` are:
 - `--output_dir`: Directory where to store results.
 - `--interpretable`: If interpretable results should be generated, basically if IMN should be used or the TabResNet architecture.
 - `--mode`: Takes two arguments, `classification` and `regression`. 
+- `--hpo_tuning`: Whether to enable hyperparameter optimization. 
+- `--nr_trials`: The number of trials when performing hyperparameter optimization. 
+- `--disable_wandb`: Whether to disable wandb logging. 
 
 
 
 **A minimal example of running IMN**:
 
 ```
-python main_experiment.py --output_dir "." --dataset_id 1590 --nr_restarts 3 --weight_norm 0.1 --weight_decay 0.01 --seed 0 --interpretable
+python hpo_main_experiment.py --hpo_tuning --n_trials 3 --disable_wandb --interpretable --dataset_id 1590
 
 ```
 
