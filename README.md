@@ -1,21 +1,21 @@
-# Breaking the Paradox of Explainable Deep Learning
+# [NeurIPS 2024] Mesomorphic Interpretable Networks for Tabular Data
 
-Deep Learning has achieved tremendous results by pushing the frontier of automation in diverse domains. Unfortunately, current neural network architectures are not explainable by design. In this paper, we propose a novel method that trains deep hypernetworks to generate explainable linear models. Our models retain the accuracy of black-box deep networks while offering free lunch explainability by design. Specifically, our explainable approach requires the same runtime and memory resources as black-box deep models, ensuring practical feasibility. Through extensive experiments, we demonstrate that our explainable deep networks are as accurate as state-of-the-art classifiers on tabular data. On the other hand, we showcase the interpretability of our method on a recent benchmark for empirically comparing prediction explainers. The experimental results reveal that our models are not only as accurate as their black-box deep-learning counterparts but also as interpretable as state-of-the-art explanation techniques.
+Even though neural networks have been long deployed in applications involving tabular data, still existing neural architectures are not explainable by design. In this paper, we propose a new class of interpretable neural networks for tabular data that are both deep and linear at the same time (i.e. mesomorphic). We optimize deep hypernetworks to generate explainable linear models on a per-instance basis. As a result, our models retain the accuracy of black-box deep networks while offering  free lunch explainability for tabular data by design. Through extensive experiments, we demonstrate that our explainable deep networks have comparable performance to state-of-the-art classifiers on tabular data and outperform current existing methods that are explainable by design.
 
-NeurIPS Submission 697
+Authors: Arlind Kadra, Sebastian Pineda Arango, and Josif Grabocka
 
 ## Setting up the virtual environment
 
 ```
 # The following commands assume the user is in the cloned directory
-conda create -n inn python=3.9
-conda activate inn
+conda create -n imn python=3.9
+conda activate imn
 cat requirements.txt | xargs -n 1 -L 1 pip install
 ```
 
 ## Running the code
 
-The entry script to run INN and TabResNet is `main_experiment.py`. 
+The entry script to run IMN and TabResNet is `main_experiment.py`. 
 The entry script to run the baseline methods (CatBoost, Random Forest, Logistic Regression, Decision Tree and TabNet) is `baseline_experiment.py`.
 
 The main arguments for `main_experiment.py` are:
@@ -34,12 +34,12 @@ The main arguments for `main_experiment.py` are:
 - `--test_split_size`: The fraction of total data that will correspond to the test set.
 - `--nr_restarts`: Number of restarts for the learning rate scheduler.
 - `--output_dir`: Directory where to store results.
-- `--interpretable`: If interpretable results should be generated, basically if INN should be used or the TabResNet architecture.
+- `--interpretable`: If interpretable results should be generated, basically if IMN should be used or the TabResNet architecture.
 - `--mode`: Takes two arguments, `classification` and `regression`. 
 
 
 
-**A minimal example of running INN**:
+**A minimal example of running IMN**:
 
 ```
 python main_experiment.py --output_dir "." --dataset_id 1590 --nr_restarts 3 --weight_norm 0.1 --weight_decay 0.01 --seed 0 --interpretable
