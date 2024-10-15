@@ -1,3 +1,5 @@
+from typing import Dict, Tuple, Union
+
 import torch
 import torch.nn as nn
 
@@ -7,28 +9,36 @@ class HyperNet(nn.Module):
         self,
         nr_features: int = 32,
         nr_classes: int = 10,
-        nr_blocks: int = 0,
+        nr_blocks: int = 2,
         hidden_size: int = 64,
         dropout_rate: float = 0.25,
-        **kwargs,
+        **kwargs: Dict,
     ):
         super(HyperNet, self).__init__()
         self.nr_blocks = nr_blocks
         self.hidden_size = hidden_size
-        self.blocks = nn.ModuleList()
-        self.batch_norm = nn.BatchNorm1d(self.hidden_size)
-        self.act_func = torch.nn.GELU()
         self.nr_features = nr_features
         self.nr_classes = nr_classes
-        self.input_layer = nn.Linear(nr_features, hidden_size)
         self.dropout_rate = dropout_rate
-        self.output_drop = nn.Dropout(self.dropout_rate)
+        self.blocks = nn.ModuleList()
+        self.input_layer = nn.Linear(nr_features, hidden_size)
+        self.batch_norm = nn.BatchNorm1d(self.hidden_size)
+        self.act_func = torch.nn.GELU()
+        self.input_drop = nn.Dropout(self.dropout_rate)
 
         for _ in range(nr_blocks):
-            self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=self.dropout_rate))
+            self.blocks.append(
+                self.make_residual_block(
+                    hidden_size,
+                    hidden_size,
+                    dropout_rate=self.dropout_rate,
+                )
+            )
 
+        # the weights of the linear/logistic/softmax regression model
         self.output_layer = nn.Linear(hidden_size, (nr_features + 1) * nr_classes)
 
+        # initializations that aid convergence for the ResNet architecture
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
@@ -38,7 +48,12 @@ class HyperNet(nn.Module):
             if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)
 
-    def forward(self, x, return_weights: bool = False, simple_weights: bool = False):
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_weights: bool = False,
+        simple_weights: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
         x = x.view(-1, self.nr_features)
         input = x
@@ -46,20 +61,21 @@ class HyperNet(nn.Module):
         x = self.input_layer(x)
         x = self.batch_norm(x)
         x = self.act_func(x)
-        x = self.output_drop(x)
+        x = self.input_drop(x)
 
         for i in range(self.nr_blocks):
             x = self.blocks[i](x)
 
         w = self.output_layer(x)
 
+        # add ones to the input for the bias term
         input = torch.cat((input, torch.ones(input.shape[0], 1).to(x.device)), dim=1)
         w = w.view(-1, (self.nr_features + 1), self.nr_classes)
         x = torch.einsum("ij,ijk->ik", input, w)
         
-        # if test mode
+        # if test mode then provide the feature impacts,
+        # which equals to the weights times the input
         if not self.training and not simple_weights:
-            
             repeated_input = torch.stack([input for _ in range(self.nr_classes)], dim=2)
             w = repeated_input[:, :-1, :] * w[:, :-1, :]
 
@@ -73,21 +89,19 @@ class HyperNet(nn.Module):
         in_features: int,
         output_features: int,
         dropout_rate: float = 0.25,
-    ):
+    ) -> BasicBlock:
         """Creates a residual block.
 
         Args:
-            in_features: int
-                Number of input features to the first
+            in_features: Number of input features to the first
                 layer of the residual block.
             output_features: Number of output features
                 for the last layer of the residual block.
+            dropout_rate: Dropout rate for the residual block.
 
         Returns:
-            BasicBlock
-                A residual block.
+            A residual block.
         """
-
         return self.BasicBlock(in_features, output_features, dropout_rate)
 
     class BasicBlock(nn.Module):
@@ -98,17 +112,26 @@ class HyperNet(nn.Module):
             output_features: int,
             dropout_rate: float,
         ):
+            """A basic residual block.
+
+            Args:
+                in_features: Number of input features to the first
+                    layer of the residual block.
+                output_features: Number of output features
+                dropout_rate: Dropout rate for the residual block.
+            """
             super(HyperNet.BasicBlock, self).__init__()
             self.dropout_rate = dropout_rate
             self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
             self.residual_dropout = nn.Dropout(self.dropout_rate)
             self.linear1 = nn.Linear(in_features, output_features)
             self.bn1 = nn.BatchNorm1d(output_features)
-            self.gelu = nn.GELU()
             self.linear2 = nn.Linear(output_features, output_features)
             self.bn2 = nn.BatchNorm1d(output_features)
+            self.gelu = nn.GELU()
 
-        def forward(self, x):
+        def forward(self, x) -> torch.Tensor:
+
             residual = x
             residual = self.residual_dropout(residual)
 
