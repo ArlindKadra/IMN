@@ -1,15 +1,16 @@
 import argparse
 from copy import deepcopy
 import os
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
+import pandas as pd
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, SequentialLR
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
-import numpy as np
-import pandas as pd
 import wandb
 
+from examples.toy_example import model
 from models.hypernetwork import HyperNet
 from models.tabresnet import TabResNet
 from utils import augment_data
@@ -36,7 +37,8 @@ class Classifier:
             args: argparse.Namespace
                 The arguments controlling the experiment.
             categorical_indicator: list
-                A list of booleans indicating whether the corresponding feature is categorical or not.
+                A list of booleans indicating whether the corresponding
+                feature is categorical or not.
             attribute_names: list
                 A list of strings containing the names of the features.
             model_name: str
@@ -55,7 +57,9 @@ class Classifier:
             'tabresnet': TabResNet,
             'inn': HyperNet,
         }
-        self.nr_classes = network_configuration['nr_classes'] if network_configuration['nr_classes'] != 1 else 2
+        self.nr_classes = network_configuration['nr_classes'] \
+            if network_configuration['nr_classes'] != 1 else 2
+
         if model_name == 'inn':
             self.interpretable = True
         else:
@@ -110,7 +114,11 @@ class Classifier:
 
         X_train = torch.tensor(X).float()
         y_train = torch.tensor(y)
-        y_train = y_train.float() if self.nr_classes == 2 else y_train.long()
+        if self.mode == 'classification':
+            y_train = y_train.float() if self.nr_classes == 2 else y_train.long()
+        else:
+            y_train = y_train.float()
+
         X_train = X_train.to(self.dev)
         y_train = y_train.to(self.dev)
 
@@ -120,22 +128,38 @@ class Classifier:
             y_train,
         )
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+        )
+
         # calculate the initial budget given the total number of iterations,
         # the number of restarts and the budget multiplier
         T_0: int = max(
-            ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) // (scheduler_t_mult ** nr_restarts - 1), 1)
+            ((nr_epochs * len(train_loader)) * (scheduler_t_mult - 1)) //
+             (scheduler_t_mult ** nr_restarts - 1),
+            1,
+        )
 
         # Train the hypernetwork
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-        scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+        optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=learning_rate,
+            weight_decay=weight_decay,
+        )
 
         # warmup the learning rate for 5 epochs
         def warmup(current_step: int):
             return float(current_step / (5 * len(train_loader)))
 
         scheduler1 = LambdaLR(optimizer, lr_lambda=warmup)
-        scheduler = SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[5 * len(train_loader)])
+        scheduler2 = CosineAnnealingWarmRestarts(optimizer, T_0, scheduler_t_mult)
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[scheduler1, scheduler2],
+            milestones=[5 * len(train_loader)],
+        )
 
         if self.mode == 'classification':
             if self.nr_classes > 2:
@@ -148,23 +172,25 @@ class Classifier:
         if not self.disable_wandb:
             wandb.watch(self.model, criterion, log='all', log_freq=10)
 
-        ensemble_snapshot_intervals = [T_0, (scheduler_t_mult + 1) * T_0,
-                                       (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0]
+        ensemble_snapshot_intervals = [
+            T_0,
+            (scheduler_t_mult + 1) * T_0,
+            (scheduler_t_mult ** 2 + scheduler_t_mult + 1) * T_0,
+        ]
         iteration = 0
         loss_per_epoch = []
 
         train_auroc_per_epoch = []
+
         for epoch in range(1, nr_epochs + 1):
 
             loss_value = 0
             train_auroc = 0
+
             for batch_idx, batch in enumerate(train_loader):
 
                 iteration += 1
                 x, y = batch
-
-                # pushing the model to evaluation mode in case fgsm is used for augmentation
-                self.model.eval()
 
                 info = augment_data(
                     x,
@@ -175,7 +201,6 @@ class Classifier:
                     augmentation_prob=augmentation_probability,
                 )
 
-                self.model.train()
                 optimizer.zero_grad()
 
                 if len(info) == 4:
@@ -249,12 +274,12 @@ class Classifier:
     def predict(
         self,
         X_test: Union[List, np.ndarray, pd.DataFrame],
-        y_test: Union[List, np.ndarray, pd.DataFrame] = None,
+        y_test: Optional[Union[List, np.ndarray, pd.DataFrame]] = None,
         return_weights: bool = True,
+        only_correct: bool = False,
     ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Predicts the output for the given input data.
-
 
         Args:
             X_test: list, np.ndarray or pd.DataFrame
@@ -263,6 +288,9 @@ class Classifier:
                 The ground truth labels for the given input data.
             return_weights: bool
                 Whether to return the importance weights or not.
+            only_correct: bool
+                Whether to return the importance weights only for correctly
+                predicted examples.
 
         Returns:
             predictions, weights: np.ndarray or Tuple[np.ndarray, np.ndarray]
@@ -278,21 +306,23 @@ class Classifier:
         if y_test is not None:
             if isinstance(y_test, pd.DataFrame):
                 y_test = y_test.to_numpy()
-            elif isinstance(y_test, list):
-                y_test = np.array(y_test)
+
 
         X_test = torch.tensor(X_test).float()
-
         X_test = X_test.to(self.dev)
 
         if y_test is not None:
             if isinstance(y_test, pd.DataFrame):
                 y_test = y_test.to_numpy()
-            y_test = torch.tensor(y_test).float() if self.nr_classes == 2 else torch.tensor(y_test).long()
-        else:
-            y_test = torch.zeros(X_test.size(0)).long()
+            elif isinstance(y_test, list):
+                y_test = np.array(y_test)
+            if self.mode == 'classification':
+                y_test = torch.tensor(y_test).float() if self.nr_classes == 2 \
+                    else torch.tensor(y_test).long()
+            else:
+                y_test = torch.tensor(y_test).float()
+                y_test = y_test.to(self.dev)
 
-        y_test = y_test.to(self.dev)
 
         predictions = []
         weights = []
@@ -302,10 +332,7 @@ class Classifier:
             self.model.eval()
 
             if self.interpretable:
-                if return_tree:
-                    output, model_weights = self.model(X_test, return_weights=True)
-                else:
-                    output, model_weights = self.model(X_test, return_weights=True)
+                output, model_weights = self.model(X_test, return_weights=True)
             else:
                 output = self.model(X_test)
 
@@ -321,7 +348,6 @@ class Classifier:
             if self.interpretable:
                 weights.append(model_weights.detach())
 
-
         predictions = torch.stack(predictions, dim=0)
         predictions = torch.mean(predictions, axis=0)
         predictions = torch.squeeze(predictions)
@@ -329,7 +355,7 @@ class Classifier:
         if self.interpretable and return_weights:
             weights = weights[-1]
             weights = torch.squeeze(weights)
-            if self.mode == 'classification':
+            if self.mode == 'classification' and only_correct and y_test is not None:
                 if self.nr_classes == 2:
                     # threshold in case of binary classification
                     act_predictions = (predictions > 0.5).int()
