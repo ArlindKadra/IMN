@@ -303,7 +303,6 @@ def augment_data(
                          "'cutout', 'cutmix', 'fgsm', or 'random_noise'")
 
 
-
 def preprocess_dataset(
     X: pd.DataFrame,
     y: pd.DataFrame,
@@ -523,6 +522,7 @@ def preprocess_dataset(
 
     return info_dict
 
+
 def get_dataset(
     dataset_id: int,
     test_split_size: float = 0.2,
@@ -566,3 +566,67 @@ def get_dataset(
     info_dict['dataset_name'] = dataset_name
 
     return info_dict
+
+
+def make_residual_block(
+    self,
+    in_features: int,
+    output_features: int,
+    dropout_rate: float = 0.25,
+) -> BasicBlock:
+    """Creates a residual block.
+
+    Args:
+        in_features: Number of input features to the first
+            layer of the residual block.
+        output_features: Number of output features
+            for the last layer of the residual block.
+        dropout_rate: Dropout rate for the residual block.
+
+    Returns:
+        A residual block.
+    """
+    return self.BasicBlock(in_features, output_features, dropout_rate)
+
+
+class BasicBlock(nn.Module):
+
+    def __init__(
+        self,
+        in_features: int,
+        output_features: int,
+        dropout_rate: float,
+    ):
+        """A basic residual block.
+
+        Args:
+            in_features: Number of input features to the first
+                layer of the residual block.
+            output_features: Number of output features
+            dropout_rate: Dropout rate for the residual block.
+        """
+        super(HyperNet.BasicBlock, self).__init__()
+        self.dropout_rate = dropout_rate
+        self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
+        self.residual_dropout = nn.Dropout(self.dropout_rate)
+        self.linear1 = nn.Linear(in_features, output_features)
+        self.bn1 = nn.BatchNorm1d(output_features)
+        self.linear2 = nn.Linear(output_features, output_features)
+        self.bn2 = nn.BatchNorm1d(output_features)
+        self.gelu = nn.GELU()
+
+    def forward(self, x) -> torch.Tensor:
+
+        residual = x
+        residual = self.residual_dropout(residual)
+
+        out = self.linear1(x)
+        out = self.bn1(out)
+        out = self.gelu(out)
+        out = self.hidden_state_dropout(out)
+        out = self.linear2(out)
+        out = self.bn2(out)
+        out += residual
+        out = self.gelu(out)
+
+        return out

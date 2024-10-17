@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from utils import BasicBlock, make_residual_block
+
 
 class TabResNet(nn.Module):
     def __init__(
@@ -52,54 +54,3 @@ class TabResNet(nn.Module):
         x = self.output_layer(x)
 
         return x
-
-    def make_residual_block(
-        self,
-        in_features,
-        output_features,
-        dropout_rate=0.25,
-    ):
-        """Creates a residual block.
-
-        Args:
-            in_features: int
-                Number of input features to the first
-                layer of the residual block.
-            output_features: Number of output features
-                for the last layer of the residual block.
-
-        Returns:
-            BasicBlock
-                A residual block.
-        """
-        return self.BasicBlock(in_features, output_features, dropout_rate=dropout_rate)
-
-    class BasicBlock(nn.Module):
-
-        def __init__(self, in_features, output_features, dropout_rate=0.25):
-            super(TabResNet.BasicBlock, self).__init__()
-            self.dropout_rate = dropout_rate
-            self.linear1 = nn.Linear(in_features, output_features)
-            self.bn1 = nn.BatchNorm1d(output_features)
-            self.gelu = nn.GELU()
-            self.linear2 = nn.Linear(output_features, output_features)
-            self.bn2 = nn.BatchNorm1d(output_features)
-            self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
-            self.residual_dropout = nn.Dropout(self.dropout_rate)
-
-        def forward(self, x):
-            residual = x
-            residual = self.residual_dropout(residual)
-
-            out = self.linear1(x)
-            out = self.bn1(out)
-            out = self.gelu(out)
-            out = self.hidden_state_dropout(out)
-
-            out = self.linear2(out)
-            out = self.bn2(out)
-
-            out += residual
-            out = self.gelu(out)
-
-            return out
