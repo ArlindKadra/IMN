@@ -14,6 +14,16 @@ class TabResNet(nn.Module):
             dropout_rate: float = 0.25,
             **kwargs,
     ):
+        """Tabular ResNet architecture.
+
+        Args:
+            nr_features: The number of features in the input data.
+            nr_classes: The number of classes in the output data.
+            nr_blocks: The number of residual blocks in the model.
+            hidden_size: The size of the hidden layers in the model.
+            dropout_rate: The dropout rate to apply.
+            **kwargs: Additional keyword arguments.
+        """
         super(TabResNet, self).__init__()
         self.nr_blocks = nr_blocks
         self.hidden_size = hidden_size
@@ -24,6 +34,7 @@ class TabResNet(nn.Module):
         self.nr_classes = nr_classes
         self.input_layer = nn.Linear(nr_features, hidden_size)
         self.input_dropout = nn.Dropout(dropout_rate)
+        self.kwargs = kwargs
 
         for _ in range(nr_blocks):
             self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=dropout_rate))

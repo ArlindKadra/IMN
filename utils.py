@@ -317,7 +317,6 @@ def preprocess_dataset(
     """Preprocess the dataset.
 
     Args:
-
         X: The examples.
         y: The labels.
         encode_categorical: Whether to encode the categorical features.

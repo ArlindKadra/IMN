@@ -32,23 +32,15 @@ class Classifier:
         """Initialize the classifier.
 
         Args:
-            network_configuration: dict
-                The configuration for the neural network.
-            args: argparse.Namespace
-                The arguments controlling the experiment.
-            categorical_indicator: list
-                A list of booleans indicating whether the corresponding
+            network_configuration: The configuration for the neural network.
+            args: The arguments controlling the experiment.
+            categorical_indicator: A list of booleans indicating whether the corresponding
                 feature is categorical or not.
-            attribute_names: list
-                A list of strings containing the names of the features.
-            model_name: str
-                The name of the model to use.
-            device: str
-                The device to use for training.
-            output_directory: str
-                The directory to save the results.
-            disable_wandb: bool
-                Whether to disable wandb logging.
+            attribute_names: A list of strings containing the names of the features.
+            model_name: The name of the model to use.
+            device: The device to use for training.
+            output_directory: The directory to save the results.
+            disable_wandb: Whether to disable wandb logging.
         """
         super(Classifier, self).__init__()
 
@@ -83,15 +75,13 @@ class Classifier:
         y: Union[List, np.ndarray, pd.DataFrame],
     ):
         """Fit the classifier to the data.
+
         Args:
-            X: list, np.ndarray, pd.DataFrame
-                The input data.
-            y: list, np.ndarray, pd.DataFrame
-                The target data.
+            X: The input data.
+            y: The target data.
 
         Returns:
-            self: Classifier
-                The fitted classifier.
+            self: The fitted classifier.
         """
         if isinstance(X, pd.DataFrame):
             X = X.to_numpy()
@@ -278,24 +268,18 @@ class Classifier:
         return_weights: bool = True,
         only_correct: bool = False,
     ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        """
-        Predicts the output for the given input data.
+        """Predicts the output for the given input data.
 
         Args:
-            X_test: list, np.ndarray or pd.DataFrame
-                The input data for which the output should be predicted.
-            y_test: list, np.ndarray or pd.DataFrame
-                The ground truth labels for the given input data.
-            return_weights: bool
-                Whether to return the importance weights or not.
-            only_correct: bool
-                Whether to return the importance weights only for correctly
+            X_test: The input data for which the output should be predicted.
+            y_test: The ground truth labels for the given input data.
+            return_weights: Whether to return the importance weights or not.
+            only_correct: Whether to return the importance weights only for correctly
                 predicted examples.
 
         Returns:
-            predictions, weights: np.ndarray or Tuple[np.ndarray, np.ndarray]
-                The predicted output for the given input data and the importance weights
-                if requested.
+            predictions, weights: The predicted output for the given input data and
+                the importance weights if requested.
         """
         # check if X_test is a DataFrame
         if isinstance(X_test, pd.DataFrame):
@@ -306,7 +290,6 @@ class Classifier:
         if y_test is not None:
             if isinstance(y_test, pd.DataFrame):
                 y_test = y_test.to_numpy()
-
 
         X_test = torch.tensor(X_test).float()
         X_test = X_test.to(self.dev)
@@ -322,7 +305,6 @@ class Classifier:
             else:
                 y_test = torch.tensor(y_test).float()
                 y_test = y_test.to(self.dev)
-
 
         predictions = []
         weights = []

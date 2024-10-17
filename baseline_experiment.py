@@ -29,8 +29,22 @@ def main(
     attribute_names: np.ndarray,
     dataset_name: str,
 ) -> Dict:
+    """Main entry point for the experiment.
 
+    Args:
+        args: The arguments for the experiment.
+        hp_config: The hyperparameter configuration.
+        X_train: The training examples.
+        y_train: The training labels.
+        X_test: The test examples.
+        y_test: The test labels.
+        categorical_indicator: The categorical indicator for the features.
+        attribute_names: The feature names.
+        dataset_name: The name of the dataset.
 
+    Returns:
+        output_info: A dictionary with the main results from the experiment.
+    """
     np.random.seed(args.seed)
     seed = args.seed
 
@@ -179,33 +193,6 @@ def main(
 
     start_time = time.time()
 
-    def f(X):
-        return model.predict(X)
-
-    med = np.median(X_test, axis=0).reshape((1, X_test.shape[1]))
-    print(med.shape)
-
-    explainer = shap.Explainer(f, med)
-    shap_weights = []
-    # reshape example
-
-    import tensorflow as tf
-    tf.compat.v1.disable_v2_behavior()
-
-    for i in range(X_test.shape[0]):
-        example = X_test[i, :]
-
-        example = example.reshape((1, X_test.shape[1]))
-        shap_values = explainer.shap_values(example)
-        shap_weights.append(shap_values)
-    shap_weights = np.array(shap_weights)
-    shap_weights = np.squeeze(shap_weights, axis=1)
-    shap_weights = np.mean(np.abs(shap_weights), axis=0)
-    shap_weights = shap_weights / np.sum(shap_weights)
-    print(shap_weights)
-    end_time = time.time()
-    print(f"SHAP time: {end_time - start_time}")
-
     # calculate the balanced accuracy
     train_auroc = roc_auc_score(y_train, train_predictions_probabilities, multi_class='raise' if nr_classes == 2 else 'ovo')
     train_accuracy = accuracy_score(y_train, train_predictions_labels)
@@ -234,19 +221,19 @@ def main(
     if type(sorted_idx) == np.ndarray:
         sorted_idx = sorted_idx.tolist()
 
-    # get the names of the top 10 features
-    top_10_features = [attribute_names[i] for i in sorted_idx]
-    top_10_importances = [feature_importances[i] for i in sorted_idx]
-    print("Top 10 features: %s" % top_10_features)
-    print("Top 10 feature importances: %s" % top_10_importances)
+    # get the names of the top features
+    top_features = [attribute_names[i] for i in sorted_idx]
+    top_importances = [feature_importances[i] for i in sorted_idx]
+    print("Top features: %s" % top_features)
+    print("Top feature importances: %s" % top_importances)
 
     if not args.disable_wandb:
         wandb.run.summary["Train:auroc"] = train_auroc
         wandb.run.summary["Train:accuracy"] = train_accuracy
         wandb.run.summary["Test:auroc"] = test_auroc
         wandb.run.summary["Test:accuracy"] = test_accuracy
-        wandb.run.summary["Top_10_features"] = top_10_features
-        wandb.run.summary["Top_10_features_weights"] = top_10_importances
+        wandb.run.summary["Top_features"] = top_features
+        wandb.run.summary["Top_features_weights"] = top_importances
         wandb.run.summary["Train:time"] = train_time
         wandb.run.summary["Inference:time"] = inference_time
         wandb.finish()
@@ -256,8 +243,8 @@ def main(
         'train_accuracy': train_accuracy,
         'test_auroc': test_auroc,
         'test_accuracy': test_accuracy,
-        'top_10_features': top_10_features,
-        'top_10_features_weights': top_10_importances,
+        'top_features': top_features,
+        'top_features_weights': top_importances,
         'train_time': train_time,
         'inference_time': inference_time,
     }
