@@ -56,3 +56,17 @@ The plots expect the following result folder structure:
 │   │   ├── dataset_id
 │   │   │   ├── seed
 │   │   │   │   ├── output_info.json
+```
+
+## Citation
+
+```
+@inproceedings{
+kadra2024interpretable,
+title={Interpretable Mesomorphic Networks for Tabular Data},
+author={Arlind Kadra and Sebastian Pineda Arango and Josif Grabocka},
+booktitle={The Thirty-eighth Annual Conference on Neural Information Processing Systems},
+year={2024},
+url={https://openreview.net/forum?id=PmLty7tODm}
+}
+```

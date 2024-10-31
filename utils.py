@@ -3,10 +3,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 import openml
 import pandas as pd
-from scipy.stats import rankdata
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import (
     OrdinalEncoder,
     LabelEncoder,
@@ -15,6 +13,7 @@ from sklearn.preprocessing import (
     TargetEncoder,
 )
 import torch
+import torch.nn as nn
 
 
 def prepare_data_for_cutmix(
@@ -567,27 +566,6 @@ def get_dataset(
     return info_dict
 
 
-def make_residual_block(
-    self,
-    in_features: int,
-    output_features: int,
-    dropout_rate: float = 0.25,
-) -> BasicBlock:
-    """Creates a residual block.
-
-    Args:
-        in_features: Number of input features to the first
-            layer of the residual block.
-        output_features: Number of output features
-            for the last layer of the residual block.
-        dropout_rate: Dropout rate for the residual block.
-
-    Returns:
-        A residual block.
-    """
-    return self.BasicBlock(in_features, output_features, dropout_rate)
-
-
 class BasicBlock(nn.Module):
 
     def __init__(
@@ -604,7 +582,7 @@ class BasicBlock(nn.Module):
             output_features: Number of output features
             dropout_rate: Dropout rate for the residual block.
         """
-        super(HyperNet.BasicBlock, self).__init__()
+        super(BasicBlock, self).__init__()
         self.dropout_rate = dropout_rate
         self.hidden_state_dropout = nn.Dropout(self.dropout_rate)
         self.residual_dropout = nn.Dropout(self.dropout_rate)
@@ -629,3 +607,23 @@ class BasicBlock(nn.Module):
         out = self.gelu(out)
 
         return out
+
+
+def make_residual_block(
+    in_features: int,
+    output_features: int,
+    dropout_rate: float = 0.25,
+) -> BasicBlock:
+    """Creates a residual block.
+
+    Args:
+        in_features: Number of input features to the first
+            layer of the residual block.
+        output_features: Number of output features
+            for the last layer of the residual block.
+        dropout_rate: Dropout rate for the residual block.
+
+    Returns:
+        A residual block.
+    """
+    return BasicBlock(in_features, output_features, dropout_rate)

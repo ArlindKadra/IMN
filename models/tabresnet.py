@@ -37,7 +37,7 @@ class TabResNet(nn.Module):
         self.kwargs = kwargs
 
         for _ in range(nr_blocks):
-            self.blocks.append(self.make_residual_block(hidden_size, hidden_size, dropout_rate=dropout_rate))
+            self.blocks.append(make_residual_block(hidden_size, hidden_size, dropout_rate=dropout_rate))
 
         self.output_layer = nn.Linear(hidden_size, nr_classes)
 
@@ -47,7 +47,7 @@ class TabResNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
         for m in self.modules():
-            if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
+            if isinstance(m, BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
     def forward(self, x):

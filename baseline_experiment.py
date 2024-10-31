@@ -2,7 +2,6 @@ import argparse
 import time
 from typing import Dict
 
-import shap
 from catboost import CatBoostClassifier
 import numpy as np
 from pytorch_tabnet.tab_model import TabNetClassifier

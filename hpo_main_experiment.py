@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-from typing import Dict
 
 import numpy as np
 import optuna
@@ -103,7 +102,7 @@ def hpo_main(args):
         time_limit = 60 * 60
         study = optuna.create_study(
             direction='maximize',
-            sampler=optuna.samplers.TPESampler(seed=seed),
+            sampler=optuna.samplers.TPESampler(seed=args.seed),
         )
 
         # queue default configurations as the first trials

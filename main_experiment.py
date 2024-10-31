@@ -1,17 +1,14 @@
 import argparse
-import json
 import os
 import time
 from typing import Dict
 
 import numpy as np
-import shap
-from sklearn.metrics import balanced_accuracy_score, accuracy_score, roc_auc_score, mean_squared_error
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error
 import torch
 import wandb
 
 from models.model import Classifier
-from utils import get_dataset
 
 
 def main(
@@ -122,7 +119,6 @@ def main(
             project='INN',
             config=args,
         )
-        wandb.config['weight_norm'] = hp_config['weight_norm']
         wandb.config['model_name'] = model_name
         wandb.config['dataset_name'] = dataset_name
 

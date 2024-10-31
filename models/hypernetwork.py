@@ -41,7 +41,7 @@ class HyperNet(nn.Module):
 
         for _ in range(nr_blocks):
             self.blocks.append(
-                self.make_residual_block(
+                make_residual_block(
                     hidden_size,
                     hidden_size,
                     dropout_rate=self.dropout_rate,
@@ -58,7 +58,7 @@ class HyperNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
         for m in self.modules():
-            if isinstance(m, self.BasicBlock) and m.bn2.weight is not None:
+            if isinstance(m, BasicBlock) and m.bn2.weight is not None:
                 nn.init.constant_(m.bn2.weight, 0)
 
     def forward(

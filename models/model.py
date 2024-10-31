@@ -10,7 +10,6 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, LambdaLR, Sequ
 from torcheval.metrics.functional import binary_auroc, multiclass_auroc, binary_accuracy, multiclass_accuracy
 import wandb
 
-from examples.toy_example import model
 from models.hypernetwork import HyperNet
 from models.tabresnet import TabResNet
 from utils import augment_data
@@ -265,7 +264,7 @@ class Classifier:
         self,
         X_test: Union[List, np.ndarray, pd.DataFrame],
         y_test: Optional[Union[List, np.ndarray, pd.DataFrame]] = None,
-        return_weights: bool = True,
+        return_weights: bool = False,
         only_correct: bool = False,
     ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """Predicts the output for the given input data.
